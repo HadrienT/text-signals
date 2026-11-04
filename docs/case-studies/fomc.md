@@ -66,9 +66,30 @@ together with the URL, fetch time and sha256.
 - Possible control: unscheduled meetings and the zero-lower-bound period (2009–2015, 2020–2021)
   are treated as subsamples, not dropped silently.
 
+### Decisions on market data (week 1, 2026-11-04)
+
+- **Source.** DGS2 and DGS10 from FRED's keyless `fredgraph.csv` endpoint, through the cached
+  fetcher (URL, time and sha256 in the manifest). On 2026-11-04 both series matched the copy
+  kept in the separate `data-ingest` database exactly (same days, same closed days, no
+  difference in value). Daily Treasury yields are not revised, so vintages do not matter here.
+- **Event window.** Treasury constant-maturity yields are read from closing bid quotes taken at
+  about 3:30 p.m. ET. The event day is the release date if the release came before 3:30 p.m.,
+  otherwise the next day with an observation; the pre-event day is the last day with an
+  observation before it. Closed days (empty values in FRED) are skipped on both sides. A release
+  without a stated time is assumed to precede the fixing; this holds for every scheduled
+  statement, released at 2:15 or 2:00 p.m. Two statements roll forward: Sunday 9 May 2010
+  (9:15 p.m.) and Sunday 15 March 2020 (5:00 p.m.).
+- **Units.** Changes in basis points; the 2s10s change is ΔDGS10 − ΔDGS2.
+
 ## 4. Scores
 
 1. **LM baseline:** (negative − positive) / total words, plus an uncertainty word count.
+   Fixed on 2026-11-04, before any regression: the 1993-2025 master dictionary (sha256 pinned
+   in `text_signals/lexicon.py`); a word is in a list when its column holds a positive year
+   (words removed in 2020 are excluded); tokens are alphabetic runs, upper-cased; the
+   denominator counts every token. The score is computed on the full statement text, vote
+   included. Known limitation: LM was built from 10-K filings, and words such as "inflation"
+   or "tightening" carry no sign in it.
 2. **FinBERT baseline:** mean sentence-level hawkish/dovish or sentiment probability.
 3. **LLM structured extraction** with a fixed Pydantic schema. Fields to settle in week 2, for
    example:
