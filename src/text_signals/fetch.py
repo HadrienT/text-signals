@@ -31,6 +31,7 @@ class FetchRecord(BaseModel):
     content_type: str | None
     sha256: str
     path: str  # relative to the cache root
+    note: str | None = None  # e.g. how a file that could not be fetched by code was obtained
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -92,10 +93,14 @@ class Fetcher:
                 self._sleep(wait)
         self._last_request = self._clock()
 
-    def get(self, url: str, *, refresh: bool = False) -> tuple[bytes, FetchRecord]:
+    def get(
+        self, url: str, *, refresh: bool = False, expected_sha256: str | None = None
+    ) -> tuple[bytes, FetchRecord]:
         """Return the body of ``url`` and its manifest record, from cache unless ``refresh``.
 
-        Raises ``httpx.HTTPStatusError`` on a non-2xx response; failed fetches are not cached.
+        Raises ``httpx.HTTPStatusError`` on a non-2xx response, and ``ValueError`` when
+        ``expected_sha256`` is given and the body does not match it (some hosts answer 200 with
+        an error page). Failed fetches are neither cached nor written to the manifest.
         """
         cached = self._records.get(url)
         if cached is not None and not refresh:
@@ -108,6 +113,11 @@ class Fetcher:
         response = self._client.get(url)
         response.raise_for_status()
         body = response.content
+        if expected_sha256 is not None and sha256_bytes(body) != expected_sha256:
+            raise ValueError(
+                f"{url}: sha256 {sha256_bytes(body)} differs from the expected {expected_sha256} "
+                f"(content-type {response.headers.get('content-type')})"
+            )
         rel = cache_path_for(url)
         dest = self.root / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -121,11 +131,40 @@ class Fetcher:
             sha256=sha256_bytes(body),
             path=rel.as_posix(),
         )
+        self._append(rec)
+        return body, rec
+
+    def _append(self, rec: FetchRecord) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         with self.manifest_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec.model_dump(mode="json")) + "\n")
-        self._records[url] = rec
-        return body, rec
+        self._records[rec.url] = rec
+
+    def import_file(self, url: str, source: Path, *, expected_sha256: str) -> FetchRecord:
+        """Put a manually downloaded copy of ``url`` into the cache, if it is the expected file.
+
+        For hosts that block scripted downloads at times (Google Drive quotas). The manifest
+        line says so in ``note``; the sha256 check guarantees the bytes are the pinned ones.
+        """
+        body = source.read_bytes()
+        if sha256_bytes(body) != expected_sha256:
+            raise ValueError(f"{source}: sha256 {sha256_bytes(body)} != {expected_sha256}")
+        rel = cache_path_for(url)
+        dest = self.root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+        rec = FetchRecord(
+            url=url,
+            final_url=url,
+            fetched_at=datetime.now(UTC),
+            status_code=0,
+            content_type=None,
+            sha256=expected_sha256,
+            path=rel.as_posix(),
+            note=f"imported from a manual download ({source.name}); sha256 matches the pin",
+        )
+        self._append(rec)
+        return rec
 
     def close(self) -> None:
         self._client.close()

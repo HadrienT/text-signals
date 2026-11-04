@@ -76,3 +76,27 @@ def test_tampered_cache_is_detected(tmp_path: Path) -> None:
     (tmp_path / rec.path).write_bytes(b"edited")
     with pytest.raises(ValueError, match="sha256"):
         f.get("https://x.gov/a.htm")
+
+
+def test_unexpected_body_is_rejected_before_caching(tmp_path: Path) -> None:
+    f = _fetcher(tmp_path, [], [])
+    with pytest.raises(ValueError, match="expected"):
+        f.get("https://x.gov/a.htm", expected_sha256="0" * 64)
+    assert f.record("https://x.gov/a.htm") is None
+    assert not (tmp_path / "x.gov" / "a.htm").exists()
+    good = sha256_bytes(b"body of /a.htm")
+    assert f.get("https://x.gov/a.htm", expected_sha256=good)[1].sha256 == good
+
+
+def test_import_file_checks_the_pin(tmp_path: Path) -> None:
+    src = tmp_path / "manual.csv"
+    src.write_bytes(b"word\n")
+    f = _fetcher(tmp_path / "cache", [], [])
+    with pytest.raises(ValueError):
+        f.import_file("https://x.gov/d.csv", src, expected_sha256="0" * 64)
+    rec = f.import_file("https://x.gov/d.csv", src, expected_sha256=sha256_bytes(b"word\n"))
+    assert rec.note is not None and "manual" in rec.note
+    # Served from cache afterwards, with no network request.
+    calls: list[str] = []
+    assert _fetcher(tmp_path / "cache", calls, []).get("https://x.gov/d.csv")[0] == b"word\n"
+    assert calls == []
