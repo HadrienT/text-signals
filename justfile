@@ -11,3 +11,7 @@ lint:
 # Unit tests.
 test:
     uv run pytest
+
+# Fetch the FOMC calendar and statements into data/ (cached; --refresh for new meetings).
+fetch-fomc *args:
+    uv run python -m text_signals.sources.fomc {{args}}
