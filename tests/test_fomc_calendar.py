@@ -19,6 +19,8 @@ FIXTURES = Path(__file__).parent / "fixtures" / "fomc"
         ("January 30-31", 2024, date(2024, 1, 31)),
         ("Apr/May 30-1", 2024, date(2024, 5, 1)),
         ("Jan/Feb 31-1", 2023, date(2023, 2, 1)),
+        ("January 31-February 1", 1995, date(1995, 2, 1)),
+        ("July 31-August 1", 2012, date(2012, 8, 1)),
         ("March 19-20*", 2024, date(2024, 3, 20)),
         ("May 9 Conference Call", 2010, date(2010, 5, 9)),
         ("August 22 (notation vote)", 2025, date(2025, 8, 22)),

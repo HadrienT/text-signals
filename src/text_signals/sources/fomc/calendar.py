@@ -64,20 +64,23 @@ _MONTHS = {
     )
     for m in names
 }
-_LABEL_RE = re.compile(r"^([A-Za-z]+(?:/[A-Za-z]+)?)\.?\s+(\d{1,2})(?:\s*-\s*(\d{1,2}))?")
+_LABEL_RE = re.compile(
+    r"^([A-Za-z]+(?:/[A-Za-z]+)?)\.?\s+(\d{1,2})"  # "January 31", "Apr/May 30"
+    r"(?:\s*-\s*(?:([A-Za-z]+)\.?\s+)?(\d{1,2}))?"  # "-1", "-February 1"
+)
 
 
 def meeting_end_date(label: str, year: int) -> date:
-    """Last day of a meeting from a calendar label such as "January 30-31" or "Apr/May 30-1".
+    """Last day of a meeting from a calendar label.
 
-    A December-January meeting ("Dec/Jan 31-1") ends in the following year; the Fed lists it
-    under the year it ends in, so ``year`` is taken as the year of the last day.
+    Handles "January 30-31", "Apr/May 30-1" (current calendar) and "January 31-February 1"
+    (historical pages). ``year`` is the year the calendar lists the meeting under.
     """
     m = _LABEL_RE.match(label.strip())
     if m is None:
         raise ValueError(f"cannot parse meeting label {label!r}")
-    months, first_day, last_day = m.groups()
-    month = _MONTHS[months.split("/")[-1].lower()]
+    months, first_day, end_month, last_day = m.groups()
+    month = _MONTHS[(end_month or months.split("/")[-1]).lower()]
     return date(year, month, int(last_day or first_day))
 
 
