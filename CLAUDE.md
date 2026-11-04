@@ -1,17 +1,30 @@
-# fedspeak — notes for Claude Code
+# text-signals — notes for Claude Code
 
-A research project: an LLM tone signal from FOMC communications, its evaluation, and look-ahead
-bias. It is also a **portfolio project for a quantitative research internship application**
+A research project: extracting investment signals from text corpora with local LLMs, evaluating
+the extraction, testing the signal against market data, and measuring look-ahead bias. The first
+case study is FOMC communications; others (SEC filings, earnings calls, other central banks) will
+follow. It is also a **portfolio project for a quantitative research internship application**
 (AI/LLM tools for investment research). Optimise for a sound method and for clarity to a quant
 reader, not for the number of features.
 
-Read `docs/research-plan.md` first. It is the protocol. Change it when a decision changes, and
-write down why.
+Read the protocol of the current case study first (`docs/case-studies/*.md`). Change it when a
+decision changes, and write down why.
+
+## Architecture
+
+- **Generic core** in `src/text_signals/`: the document model (keyed by release timestamp, with
+  provenance), the fetch cache and manifest, the LLM extraction client and its cache, the
+  evaluation metrics, the point-in-time market join, the event study and the out-of-sample tools.
+- **Per-corpus code** in `src/text_signals/sources/<corpus>/` (fetching and parsing) and, where
+  needed, a corpus-specific extraction schema. A new corpus should only need a source module, a
+  schema and a protocol document.
+- Don't build the abstraction ahead of time. Write the FOMC case study first and pull code into
+  the core when a second corpus actually needs it.
 
 ## Tracking work: GitHub Issues
 
-Repository `HadrienT/fedspeak`; `gh` is authenticated. One issue per week of the plan, plus a pinned
-`📋 Board` issue.
+Repository `HadrienT/text-signals`; `gh` is authenticated. One issue per piece of work (the FOMC
+case study is split by week), plus a pinned `📋 Board` issue.
 
 - At the start of a session, run `gh issue list --state open`.
 - When an issue is done: `gh issue close <n> --comment "done in <sha>"`, then tick the box in the
@@ -27,7 +40,7 @@ Repository `HadrienT/fedspeak`; `gh` is authenticated. One issue per week of the
 - Work on a branch and open a PR to `main`. End commit messages with
   `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - Small, incremental commits that tell the story of the work. Never rewrite or backdate history.
-- Notebooks are for exploration only. Anything a result depends on lives in `src/fedspeak/` and
+- Notebooks are for exploration only. Anything a result depends on lives in `src/text_signals/` and
   is tested.
 
 ## Research rules (non-negotiable)

@@ -1,34 +1,37 @@
-# fedspeak
+# text-signals
 
-**Does an LLM reading Federal Reserve communications extract a policy-tone signal that explains
-rate moves beyond classic text baselines — and how much of that is look-ahead bias?**
+**Extracting investment signals from text corpora with local LLMs, and measuring honestly
+whether they hold up.**
 
 Status: early work, set up on 2026-11-04. Results will show up here as they come.
 
-## Question
+## What this is
 
-FOMC statements, minutes and speeches move rates. Dictionary methods (Loughran–McDonald) and
-finance-tuned encoders (FinBERT) score their tone. A general LLM can do more: say *what* changed
-in the forward guidance, the inflation and labour-market assessment, and the balance-of-risks
-wording since the previous meeting.
+Investment research reads a lot of unstructured text: central bank communications, corporate
+filings, earnings calls, news. This repository builds a reusable pipeline that turns such a corpus
+into structured, auditable signals, and evaluates them on three axes:
 
-This project tests three things:
+1. **Signal.** Does the LLM-derived measure explain or predict a market variable, beyond classic
+   text baselines (dictionaries, finance-tuned encoders)?
+2. **Reliability.** How accurate is the extraction against hand-labelled data, and do the
+   citations of a retrieval agent actually support its answers?
+3. **Look-ahead bias.** LLMs have read the future of every historical document in their training
+   data. How much of a backtest survives after the model's training cutoff, or once the documents
+   are anonymised?
 
-1. **Signal.** Does an LLM-derived hawkish/dovish score explain the change in the 2-year Treasury
-   yield on announcement days, beyond the baselines?
-2. **Reliability.** How accurate is the structured extraction against a hand-labelled set, and
-   can a retrieval agent answer analyst questions with citations that hold up?
-3. **Look-ahead bias.** LLMs have read what happened after the meetings in their training data.
-   How much of the in-sample result goes away (a) after the model's training cutoff and (b) when
-   documents are anonymised?
+The pipeline is the same for every corpus:
 
-Full protocol: [docs/research-plan.md](docs/research-plan.md).
+```
+fetch → parse (keyed by release timestamp) → score (baselines + LLM extraction)
+      → evaluate extraction → join market data point-in-time → event study / out-of-sample test
+```
 
-## Data (all public and point-in-time)
+## Case studies
 
-- FOMC statements, minutes and press conference transcripts: federalreserve.gov
-- Treasury yields (DGS2, DGS10) and other series: FRED
-- Loughran–McDonald sentiment dictionary
+| # | Corpus | Question | Status |
+|---|---|---|---|
+| 1 | FOMC statements, minutes, press conferences | Does an LLM policy-tone score explain 2-year yield moves on announcement days? | in progress, [protocol](docs/case-studies/fomc.md) |
+| – | SEC filings (10-K/10-Q), earnings calls, other central banks… | to be defined | – |
 
 ## Models
 
@@ -39,12 +42,12 @@ a hosted API.
 ## Layout
 
 ```
-src/fedspeak/   library code (ingestion, scoring, evaluation)
-tests/          pytest
-docs/           research plan and design notes
-data/           local data, not versioned (see data/README.md)
-reports/        final research report
-notebooks/      exploration only; anything that matters goes into src/
+src/text_signals/   library code (generic pipeline + per-corpus sources)
+tests/              pytest
+docs/case-studies/  one protocol per case study
+data/               local data, not versioned (see data/README.md)
+reports/            research reports
+notebooks/          exploration only; anything that matters goes into src/
 ```
 
 ## Development

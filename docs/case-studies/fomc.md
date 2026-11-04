@@ -1,6 +1,9 @@
-# Research plan
+# Case study 1: FOMC communications
 
-Working document. Update it when a decision changes, and record why.
+Protocol for the first case study. It is a working document: update it when a decision
+changes, and record why. Anything generic (document model, point-in-time join, extraction
+cache, evaluation metrics, event study) goes into the shared library so that the next case
+studies can reuse it.
 
 ## 1. Hypotheses
 
@@ -92,7 +95,7 @@ together with the URL, fetch time and sha256.
 
 ## 9. Deliverables
 
-- A 5–6 page research report (`reports/`) covering the question, data, method, results, the
+- A 5–6 page research report (`reports/fomc.md` or PDF) covering the question, data, method, results, the
   look-ahead analysis and the limitations.
 - A README with the main results table.
 - A pipeline that can be rerun from scratch: `fetch → parse → score → evaluate → regress`.

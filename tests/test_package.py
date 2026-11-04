@@ -1,5 +1,5 @@
-import fedspeak
+import text_signals
 
 
 def test_version() -> None:
-    assert fedspeak.__version__ == "0.1.0"
+    assert text_signals.__version__ == "0.1.0"

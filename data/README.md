@@ -1,6 +1,6 @@
 # data/
 
-Nothing in this directory is versioned except this file. The code in `src/fedspeak/` rebuilds
+Nothing in this directory is versioned except this file. The code in `src/text_signals/` rebuilds
 everything.
 
 ```

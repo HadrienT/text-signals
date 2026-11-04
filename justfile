@@ -1,4 +1,4 @@
-# Task runner for fedspeak. `just --list` for everything.
+# Task runner for text-signals. `just --list` for everything.
 
 set dotenv-load := true
 
