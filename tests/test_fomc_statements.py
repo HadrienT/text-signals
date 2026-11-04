@@ -32,7 +32,11 @@ def test_modern_statement() -> None:
     assert paragraphs[0].startswith("Recent indicators suggest")
     assert "5-1/4 to 5-1/2 percent" in paragraphs[1]
     assert paragraphs[-1].startswith("Voting for the monetary policy action")
-    assert "media inquiries" not in s.text and "Implementation Note" not in s.text
+    assert (
+        "media inquiries" not in s.text
+        and "PDF" not in s.text
+        and "Implementation Note" not in s.text
+    )
 
 
 def test_legacy_1994_statement() -> None:

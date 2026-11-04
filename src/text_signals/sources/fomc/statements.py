@@ -32,6 +32,10 @@ _BOILERPLATE_RE = re.compile(
 _LEGACY_FOOTER_RE = re.compile(r"^(\d{4} Monetary policy|Home(\s*\|.*)?$|Last update:)", re.I)
 
 
+# A paragraph that is only a list of links to attachments, e.g. "Bank of Japan (79 KB PDF)".
+_ATTACHMENT_RE = re.compile(r"\((\d+(\.\d+)? [KM]B )?PDF\)$")
+
+
 class ParsedStatement(BaseModel):
     title: str
     release_date: date
@@ -59,7 +63,7 @@ def _paragraphs(container: Tag) -> list[str]:
     out = []
     for p in container.find_all("p"):
         text = _clean(p.get_text(" ", strip=True))
-        if text and not _BOILERPLATE_RE.match(text):
+        if text and not _BOILERPLATE_RE.match(text) and not _ATTACHMENT_RE.search(text):
             out.append(text)
     return out
 
