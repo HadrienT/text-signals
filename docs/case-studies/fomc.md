@@ -46,7 +46,13 @@ together with the URL, fetch time and sha256.
   schedule. A daily event window only needs the date, plus a rule for releases that fall outside
   trading hours (for example the Sunday 15 March 2020 statement), which the market join handles.
 - **Unscheduled meetings** (conference calls, intermeeting actions, notation votes) come from the
-  calendar label and are flagged `unscheduled`, not dropped.
+  calendar label and are flagged `unscheduled`, not dropped. Some of these releases are not rate
+  decisions at all (swap lines in 2008 and 2010, the FIMA repo facility, the 2020 and 2025
+  framework statements). The main event study uses scheduled meetings; the unscheduled releases
+  form a separate subsample. Of the 250 statements fetched on 2026-11-04, 18 are unscheduled.
+- **Release on a later day than the meeting.** Six statements follow a conference call held the
+  day before (e.g. the 21 January 2008 call, announced on the morning of the 22nd) or a week
+  before (4 October 2019 call, 11 October statement). The release date is the event date.
 - **Text as published.** The stored text keeps the whole press release, the vote and related
   actions (e.g. the Board's discount rate decision) included. Only page furniture is removed. Any
   further trimming is a scoring choice and belongs to the scoring code.
