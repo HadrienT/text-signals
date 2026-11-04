@@ -30,6 +30,27 @@ Each document carries its **release timestamp** (not the meeting date). Every jo
 data goes through that timestamp. This is the point-in-time rule. Store raw HTML/PDF as fetched,
 together with the URL, fetch time and sha256.
 
+### Decisions on the statement corpus (week 1, 2026-11-04)
+
+- **Statements are irregular before May 1999.** From February 1994 to March 1999 the FOMC issued
+  a statement only when it changed policy (or, from late 1998, to signal a bias); meetings with no
+  statement did not stay silent, since markets learned that policy was unchanged. The statement
+  sample is therefore regular only from May 1999. The 1994–1999 statements are kept but flagged
+  through their date, and the main event study is also run on 1999 onwards. Meetings without a
+  statement are *not* given a fake "no change" document.
+- **Release date and time.** The release date is read from the press release itself
+  (`Release Date:` on legacy pages, the article date on modern pages) and checked to be on or
+  after the last day of the meeting. The time of day is recorded only when the page states it
+  (`For release at 2:00 p.m. EST`); older pages say "For immediate release", and the time is then
+  left empty (`release_time_source = "none"`) rather than imputed from the usual 2:15 p.m.
+  schedule. A daily event window only needs the date, plus a rule for releases that fall outside
+  trading hours (for example the Sunday 15 March 2020 statement), which the market join handles.
+- **Unscheduled meetings** (conference calls, intermeeting actions, notation votes) come from the
+  calendar label and are flagged `unscheduled`, not dropped.
+- **Text as published.** The stored text keeps the whole press release, the vote and related
+  actions (e.g. the Board's discount rate decision) included. Only page furniture is removed. Any
+  further trimming is a scoring choice and belongs to the scoring code.
+
 ## 3. Market variables
 
 - Main dependent variable: ΔDGS2 between the day before and the release day (daily FRED data).
