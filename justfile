@@ -12,6 +12,10 @@ lint:
 test:
     uv run pytest
 
-# Fetch the FOMC calendar and statements into data/ (cached; --refresh for new meetings).
+# FOMC statements, Treasury yields and LM scores into data/ (cached; --refresh for new data).
 fetch-fomc *args:
     uv run python -m text_signals.sources.fomc {{args}}
+
+# Cache a manually downloaded Loughran-McDonald CSV (when Google Drive refuses scripted downloads).
+import-lm file:
+    uv run python -m text_signals.lexicon import-lm {{file}}
