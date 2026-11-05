@@ -4,7 +4,7 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from text_signals.sources.fomc.events import join_usmpd
+from text_signals.sources.fomc.events import flag_main_sample, join_usmpd
 from text_signals.sources.fomc.usmpd import (
     RATE_COLUMNS,
     RETURN_COLUMNS,
@@ -116,3 +116,19 @@ def test_join_usmpd_matches_on_release_date_only() -> None:
     assert joined.loc[0, "d_UST2Y_30m_bp"] == pytest.approx(5.5)
     # A neighbouring USMPD date (28 October) is not matched to a 29 October release.
     assert joined["d_UST2Y_30m_bp"].isna().tolist() == [False, True]
+
+
+def test_main_sample_needs_usmpd_and_no_chair_speech() -> None:
+    events = pd.DataFrame(
+        {
+            "doc_id": [
+                "fomc-statement-20260916",  # matched, clean
+                "fomc-statement-20191011",  # no USMPD row
+                "fomc-statement-20250822",  # released with Powell's Jackson Hole speech
+            ],
+            "d_UST2Y_30m_bp": [5.5, float("nan"), -3.0],
+        }
+    )
+    flagged = flag_main_sample(events)
+    assert flagged["confounded_chair_speech"].tolist() == [False, False, True]
+    assert flagged["in_main_sample"].tolist() == [True, False, False]

@@ -198,11 +198,32 @@ only the database that computes it.
   - The 32 USMPD events we lack are, apart from two, the 1994–1999 meetings that left rates
     unchanged. No statement was issued then, so there is no text to score.
   - The other two are the unscheduled actions of 4 October 2019 and 19 March 2020.
-- **Mismatch 1: October 2019.** USMPD dates an event on 4 October 2019 at 11:00 ET, the day of
-  the conference call. Our statement about that call is dated 11 October 2019, the day it was
-  published. To check before use; our rule is the release date (§4).
-- **Mismatch 2: 22 August 2025.** The revised Statement on Longer-Run Goals is in our table and
-  not in USMPD. It is probably not a policy event.
+- **Mismatch 1: October 2019. Resolved 2026-11-05: the USMPD row is misdated.**
+  - USMPD dates an event on 4 October 2019 at 11:00 ET, the day of the conference call.
+  - The Fed's press release index (`federalreserve.gov/json/ne-press.json`, read 2026-11-05)
+    lists no monetary policy release on 4 October 2019. The "Statement Regarding Monetary Policy
+    Implementation" came out on **11 October 2019 at 11:00 AM**, the time USMPD gives. Powell's
+    only remarks on 4 October were at 2:00 PM (`ne-speeches.json`).
+  - For every other unscheduled event, USMPD uses the release date (e.g. 22 January 2008 for
+    the call of the 21st), as we do. The row looks like the call date combined with the release
+    time.
+  - Which day its numbers measure cannot be known without the ticks, so the row is used for
+    nothing.
+  - The announcement had also been previewed: on 8 October 2019 at 2:30 PM, Powell said "my
+    colleagues and I will soon announce measures to add to the supply of reserves over time"
+    (`/newsevents/speech/powell20191008a.htm`). The statement itself calls the measures "purely
+    technical" and "not a change in the stance of monetary policy".
+- **Mismatch 2: 22 August 2025. Resolved 2026-11-05: confounded with a speech by the Chair.**
+  - The revised Statement on Longer-Run Goals was released at **10:00 AM**, the minute Powell's
+    Jackson Hole speech began ("Monetary Policy and the Fed's Framework Review",
+    `powell20250822a.htm`). Any window, daily or intraday, mixes the two, and the speech carried
+    the policy news. Our daily ΔDGS2 that day is −11 bp.
+  - The 2020 revision has the same structure: statement and Powell speech both at 9:10 AM on
+    27 August 2020. USMPD **includes** 2020-08-27 but not 2025-08-22, so its coverage of these
+    events is not consistent and cannot settle the question for us.
+- **Corpus gap to check.** USMPD's unscheduled event of 19 March 2020 at 9:00 is the dollar
+  swap lines with nine central banks (`monetary20200319b.htm`). It is not in our statement
+  corpus, which follows the FOMC calendar links.
 - **Daily against intraday.** On the 248 common statements, our daily changes and the 30-minute
   changes are correlated at **0.61 (2y)** and **0.64 (10y)**. The standard deviation of the
   2-year change is 7.8 bp daily and 5.7 bp intraday. Example: on 18 March 2026 the 2-year yield

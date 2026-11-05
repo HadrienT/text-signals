@@ -24,6 +24,15 @@ log = logging.getLogger(__name__)
 
 SERIES = ("DGS2", "DGS10")
 
+# Statements released at the same minute as a speech by the Chair: no window, daily or intraday,
+# separates the two, and the speech carried the policy news. Excluded from the main sample and
+# kept, flagged, for the robustness checks (protocol §3.4, decided 2026-11-05). Sources: the
+# Fed's press release and speech indexes (federalreserve.gov/json/ne-press.json, ne-speeches.json).
+CONFOUNDED_WITH_CHAIR_SPEECH = {
+    "fomc-statement-20200827": "Powell, Jackson Hole, 9:10 AM (powell20200827a.htm)",
+    "fomc-statement-20250822": "Powell, Jackson Hole, 10:00 AM (powell20250822a.htm)",
+}
+
 
 def build_events(
     docs: Sequence[Document], yields: dict[str, pd.Series], lm: LMDictionary
@@ -71,6 +80,19 @@ def join_usmpd(events: pd.DataFrame, usmpd: pd.DataFrame) -> pd.DataFrame:
     return events.merge(usmpd, on="release_date", how="left", validate="many_to_one")
 
 
+def flag_main_sample(events: pd.DataFrame) -> pd.DataFrame:
+    """Add ``confounded_chair_speech`` and ``in_main_sample`` (protocol §3.4 and §6.3).
+
+    A statement is in the main sample when it has a USMPD 30-minute change and was not released
+    together with a speech by the Chair. The others stay in the table for the daily robustness
+    check.
+    """
+    out = events.copy()
+    out["confounded_chair_speech"] = out["doc_id"].isin(list(CONFOUNDED_WITH_CHAIR_SPEECH))
+    out["in_main_sample"] = out["d_UST2Y_30m_bp"].notna() & ~out["confounded_chair_speech"]
+    return out
+
+
 def run(
     docs: Sequence[Document], data_dir: Path, *, delay_s: float = 2.0, refresh: bool = False
 ) -> pd.DataFrame:
@@ -89,7 +111,7 @@ def run(
         len(changes),
         len(changes) - len(mismatch),
     )
-    frame = join_usmpd(build_events(docs, yields, lm), changes)
+    frame = flag_main_sample(join_usmpd(build_events(docs, yields, lm), changes))
     out = data_dir / "processed" / "fomc" / "statement_events.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(out, index=False)
@@ -97,4 +119,5 @@ def run(
     log.info("events: %d statements, %d without a daily yield change", len(frame), missing)
     unmatched = frame.loc[frame["d_UST2Y_30m_bp"].isna(), "doc_id"].tolist()
     log.info("events: %d statements without a USMPD row: %s", len(unmatched), unmatched)
+    log.info("events: %d statements in the main sample", int(frame["in_main_sample"].sum()))
     return frame
