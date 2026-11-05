@@ -86,6 +86,7 @@ Negative results get reported. A null H1 with a clean protocol is a valid delive
 | 2-year Treasury yield, DGS2 | FRED `fredgraph.csv` (no key) | 1976 → today, daily | fetched |
 | 10-year Treasury yield, DGS10 | FRED `fredgraph.csv` | 1962 → today, daily | fetched |
 | 3-month Treasury yield, DGS3MO | FRED `fredgraph.csv` | 1981 → today, daily | to fetch (control, §6.2) |
+| Intraday rate changes and policy surprises (USMPD) | San Francisco Fed, `sffed.us/usmpd` | 280 statements 1994 → 2026-10-28, press conferences from 2011, minutes from 2001 | inspected by hand, not in the pipeline (§3.4) |
 | Loughran–McDonald dictionary | Notre Dame SRAF, master dictionary 1993-2025 (Google Drive) | 86,553 words | fetched, sha256 pinned |
 | FinBERT / hawkish-dovish encoder | Hugging Face | – | to choose (§5.2) |
 | Local LLMs | open-weight models served by `llama-server` | – | to choose (week 2) |
@@ -120,6 +121,108 @@ manifest), `title`, `text` (paragraphs separated by a blank line).
 - Polite fetching: a 2-second delay between requests and a descriptive User-Agent without a
   personal address.
 
+### 3.4 Intraday data: the San Francisco Fed event-study database (found 2026-11-05)
+
+The **U.S. Monetary Policy Event-Study Database** (USMPD) is published by the San Francisco Fed's
+Center for Monetary Research (Acosta, Ajello, Bauer, Loria and Miranda-Agrippino, 2025). It is
+free and needs no key. Its intraday prices come from LSEG Tick History, which we could not buy.
+Its findings, and our own checks of it, go into the report.
+
+**Files inspected on 2026-11-05** (version "Last update: 30 October 2026"), downloaded by hand
+into a scratch directory, not yet into `data/raw/`:
+
+| File | URL | sha256 |
+|---|---|---|
+| `USMPD.xlsx` | `https://www.frbsf.org/wp-content/uploads/USMPD.xlsx` | `2b91297c42cf692dd74f65eabf7ee97f81d452676e23fa02edb222bfa60f0d0a` |
+| `monetary-policy-surprises.zip` (R code, `mps.csv`, `mps_minutes.csv`) | `https://www.frbsf.org/wp-content/uploads/monetary-policy-surprises.zip` | `ee9f98bc6a2b49e43078dde0028413c6ca008df39fa57104ca1bf1174c27af0d` |
+
+The page states no licence. It asks to cite the working paper (§11).
+
+**Content.** There is one row per event, with the event's timestamp in Eastern Time. The database
+gives the *change* of each price over the window, not the tick series.
+
+| Sheet | Events | Window |
+|---|---|---|
+| Statements | 280, 1994-02-04 → 2026-10-28 | 10 min before → 20 min after the release |
+| Press Conferences | 96, from 2011-04-27 | 10 min before → 60 min after its start |
+| Monetary Events | 280 | statement and press conference together (100 min) |
+| Minutes | 207, from 2001-02-01 | 10 min before → 20 min after the release |
+
+The variables are the following. Rates are in percentage points and returns in percent.
+
+- MP1 and MP2: fed funds futures surprises (below).
+- FF1–FF6: fed funds futures.
+- ED1–ED8: Eurodollar futures, then SOFR futures from 2022.
+- OIS 1y and 2y.
+- Treasury yields 3m, 6m, 2y, 5y, 10y and 30y, and TIPS 5y, 10y and 30y.
+- S&P 500 and the E-mini future, DXY, EURUSD and USDJPY.
+- Indicator flags: `SEP`, `Unscheduled` and `PC`.
+
+**Policy surprises.**
+
+- **MP1** is the surprise in the current decision (Kuttner, 2001). Write D for the number of days
+  in the month and d for the day of the meeting. Then MP1 = FF1 × D / (D − d), or MP1 = FF2 when
+  the meeting falls in the last 7 days of the month. We recomputed it from FF1 and FF2 and
+  matched the database on **280 of 280** statements.
+- **MP2** is the surprise in the expected rate after the next meeting (Gürkaynak, Sack and
+  Swanson, 2005).
+- **The PCA surprise** (`mps.csv`, from the authors' `mps.R`) is the first principal component
+  of MP1, MP2 and ED2–ED4. These cover about one year ahead (Nakamura and Steinsson, 2018). It is
+  scaled by a regression of the daily change in the one-year zero-coupon yield on it, so that it
+  moves that yield one for one.
+  - *Caveat for our question:* this surprise spans about a year, so it **includes the
+    guidance**. Used as a control, it would absorb the effect the text is meant to carry. MP1
+    only removes the surprise in the decision itself.
+  - *Look-ahead:* the principal component and its scaling are estimated on the full sample. They
+    are fine in-sample but not for the out-of-sample test (§6.4); `mps.R` has an `END_DATE`
+    option for this.
+
+**Where each concept comes from.** The report cites the paper that introduced each concept, not
+only the database that computes it.
+
+| Concept | Origin | What we take from it |
+|---|---|---|
+| Policy surprise from fed funds futures (MP1), scaled by D / (D − d) | Kuttner (2001) | the surprise in the current decision |
+| Next-meeting surprise (MP2); target and path factors (`gss.R`) | Gürkaynak, Sack and Swanson (2005) | the surprise about the next meeting; the split between the decision and the guidance |
+| The last-7-days rule (use FF2) | used in Gürkaynak, Sack and Swanson (2005), to confirm in the paper | it matches USMPD on 280 of 280 statements |
+| Surprise as the first principal component of futures changes over about one year | Nakamura and Steinsson (2018) | the "policy news" surprise |
+| The USMPD variant: inputs MP1, MP2 and ED2–ED4, scaled on the one-year yield; the windows and the database | Acosta et al. (2025) | the intraday changes and the surprises we use |
+| One-year zero-coupon yield used for the scaling (`SVENY01`) | Gürkaynak, Sack and Wright (2007) | the yield curve behind `y1.csv` |
+
+**Checks against our event table (§3.2).**
+
+- **Overlap.** 248 of our 250 statements match by date.
+  - The 32 USMPD events we lack are, apart from two, the 1994–1999 meetings that left rates
+    unchanged. No statement was issued then, so there is no text to score.
+  - The other two are the unscheduled actions of 4 October 2019 and 19 March 2020.
+- **Mismatch 1: October 2019.** USMPD dates an event on 4 October 2019 at 11:00 ET, the day of
+  the conference call. Our statement about that call is dated 11 October 2019, the day it was
+  published. To check before use; our rule is the release date (§4).
+- **Mismatch 2: 22 August 2025.** The revised Statement on Longer-Run Goals is in our table and
+  not in USMPD. It is probably not a policy event.
+- **Daily against intraday.** On the 248 common statements, our daily changes and the 30-minute
+  changes are correlated at **0.61 (2y)** and **0.64 (10y)**. The standard deviation of the
+  2-year change is 7.8 bp daily and 5.7 bp intraday. Example: on 18 March 2026 the 2-year yield
+  rose 8 bp over the day and fell 0.9 bp in the statement window.
+- **Release times.** USMPD records times of day that our pages do not give before 2016 (§4.1):
+  14:15 on 125 statements, 14:00 on 109. They can be used as a cross-check, cited as USMPD, not
+  as our own data.
+
+**What was looked at.** We compared yield changes between windows and recomputed MP1. LM scores
+were printed next to yield changes and surprises for six 2026 statements, to read the table. No
+relation between a score and a market move was computed. The window and control decisions below
+are therefore still made before seeing results.
+
+**Decisions (fixed 2026-11-05, §7).**
+
+1. **The main event window is the USMPD 30-minute statement window** (10 minutes before to 20
+   minutes after the release). The daily window of §4.2 becomes a robustness check.
+2. **The policy surprise control is MP1 from USMPD** (§6.2). ΔDGS3MO becomes a robustness
+   control.
+
+The two statements without a USMPD row (11 October 2019 and 22 August 2025, see the checks
+above) are to be resolved before the regressions, and the outcome is to be logged.
+
 ---
 
 ## 4. Timing: the point-in-time rule
@@ -141,6 +244,10 @@ checked against the Fed's archives if a result ever depends on it; the daily win
 since all those times precede the 3:30 p.m. fixing.
 
 ### 4.2 Event window
+
+**Since 2026-11-05 the main window is the USMPD 30-minute window around the statement (§3.4).**
+The daily window below is kept as a robustness check, and for any statement that USMPD does not
+cover.
 
 DGS2, DGS10 and DGS3MO are daily closing quotes, taken at about **3:30 p.m. ET**.
 
@@ -165,7 +272,9 @@ Two statements roll forward to the next day: Sunday 9 May 2010 (9:15 p.m.) and S
 - **Other news.** Any macro release on the same day is in the window too.
 
 Both are limitations stated in the report, not hidden. An intraday window (e.g. 10 minutes before
-to 20 minutes after the statement) would solve them but needs paid tick data.
+to 20 minutes after the statement) would solve them. Tick data is paid, but the San Francisco
+Fed's USMPD publishes such window changes for free (§3.4); whether it becomes the main window is
+an open decision (§7).
 
 ---
 
@@ -246,15 +355,22 @@ Without a control for the decision itself, a tone score may just proxy "they hik
 reference measure of the policy surprise (Kuttner, 2001) uses fed funds futures prices, which are
 not freely available historically.
 
-- **(a) Proposed main control: ΔDGS3MO on the event day.** The 3-month yield reflects the
+**Fixed 2026-11-05: the main control is (c), MP1. (a) is kept as a robustness control.**
+
+- **(a) Robustness control (was the proposed main control): ΔDGS3MO on the event day.** The 3-month yield reflects the
   expected policy rate over the next three months; an expected decision is already priced and
   moves it little, a surprise moves it. Caveats: it is noisy (flight to quality, bill supply),
   and it also absorbs guidance about the next meeting. With this control, the tone coefficient
   measures what the text says *beyond* the next three months.
 - **(b) Proposed robustness control: the change in the target rate** (e.g. +25 bp, 0). It is a
   known fact, not a surprise: an expected +25 bp hike shows +25 while markets barely move.
+- **(c) Found 2026-11-05: MP1 from the USMPD** (§3.4). This is the Kuttner measure itself, from
+  intraday fed funds futures, and it removes the need for the (a) proxy. The broader PCA surprise
+  is *not* a candidate control, because it includes the guidance the text carries. It could
+  instead be a second outcome: does the tone predict the surprise in the path of rates over the
+  next year?
 
-To be fixed before any regression is run.
+Fixed before any regression was run (§7).
 
 ### 6.3 Event study
 
@@ -314,9 +430,10 @@ Fixed before seeing any regression output, and dated here when fixed:
 
 | Item | Status |
 |---|---|
-| Event window and join rule | fixed 2026-11-04 (§4.2) |
+| Daily event window and join rule | fixed 2026-11-04 (§4.2); robustness check since 2026-11-05 |
+| Main event window: USMPD 30-minute statement window | fixed 2026-11-05 (§3.4) |
 | LM score definition | fixed 2026-11-04 (§5.2) |
-| Policy surprise control | proposed (§6.2) |
+| Policy surprise control: MP1 from USMPD, with ΔDGS3MO as robustness | fixed 2026-11-05 (§6.2) |
 | H4 in or out | proposed (§2) |
 | Minutes sample start | proposed (§5.1) |
 | Encoder baseline | to choose |
@@ -330,9 +447,11 @@ and the report.
 
 ## 8. Limitations known in advance
 
-- Daily data: the statement, the press conference, the projections and other same-day news are
-  mixed in one window (§4.3).
-- The policy surprise is proxied by the 3-month yield, not measured from futures (§6.2).
+- Intraday changes and surprises are taken from USMPD as published. We cannot rebuild them from
+  ticks (paid LSEG data); we can only recompute MP1 from the futures changes (§3.4). The daily
+  window remains as an independent check.
+- The PCA surprise of USMPD is estimated on the full sample, so it is not used out of sample
+  without refitting (§3.4).
 - Small sample: about 220 scheduled statements from May 1999, fewer with press conferences;
   standard errors will be wide.
 - Pinned rates at the zero lower bound flatten the 2-year yield's response for several years.
@@ -362,13 +481,23 @@ and the report.
 
 ## 11. References
 
+- Acosta, M., Ajello, A., Bauer, M., Loria, F. and Miranda-Agrippino, S. (2025). Financial
+  Market Effects of FOMC Communication: Evidence from a New Event-Study Database. *Federal
+  Reserve Bank of San Francisco Working Paper* 2025-30, doi:10.24148/wp2025-30. Database:
+  `https://sffed.us/usmpd`.
 - Gürkaynak, R., Sack, B. and Swanson, E. (2005). Do Actions Speak Louder Than Words? The
   Response of Asset Prices to Monetary Policy Actions and Statements. *International Journal of
-  Central Banking*.
+  Central Banking* 1(1), 55–93. MP2, target and path factors.
+- Gürkaynak, R., Sack, B. and Wright, J. (2007). The U.S. Treasury Yield Curve: 1961 to the
+  Present. *Journal of Monetary Economics* 54(8), 2291–2304. Zero-coupon yields (`SVENY01`),
+  data at `https://www.federalreserve.gov/data/yield-curve-tables/feds200628_1.html`.
 - Kuttner, K. (2001). Monetary policy surprises and interest rates: Evidence from the Fed funds
-  futures market. *Journal of Monetary Economics*.
+  futures market. *Journal of Monetary Economics* 47(3), 523–544. MP1.
 - Loughran, T. and McDonald, B. (2011). When Is a Liability Not a Liability? Textual Analysis,
-  Dictionaries, and 10-Ks. *Journal of Finance*.
+  Dictionaries, and 10-Ks. *Journal of Finance* 66(1), 35–65.
+- Nakamura, E. and Steinsson, J. (2018). High-Frequency Identification of Monetary
+  Non-Neutrality: The Information Effect. *Quarterly Journal of Economics* 133(3), 1283–1330.
+  Surprise as a principal component of futures changes.
 - Shah, A., Paturi, S. and Chava, S. (2023). Trillion Dollar Words: A New Financial Dataset, Task
   & Market Analysis. *ACL*.
 
@@ -386,3 +515,6 @@ and the report.
 | 2026-11-04 | FRED fetched in-repo, not read from `data-ingest` | the pipeline must be rerunnable by a reader; the two copies matched exactly |
 | 2026-11-04 | LM score definition fixed, dictionary sha256 pinned | fix the baseline before seeing results |
 | 2026-11-05 | Protocol rewritten as a complete study design | one document for goal, data and method; new items marked proposed |
+| 2026-11-05 | USMPD found and inspected; window and control left open (§3.4) | free intraday changes and futures-based surprises would lift two known limitations; no score–outcome relation looked at yet |
+| 2026-11-05 | Main window changed from daily to the USMPD 30-minute statement window; the daily window becomes robustness | it isolates the statement from the press conference and same-day news; it replaces an item fixed on 2026-11-04, before any regression was run |
+| 2026-11-05 | Main policy surprise control: MP1 from USMPD; ΔDGS3MO becomes robustness | the futures-based measure of the literature (Kuttner, 2001); the PCA surprise is rejected as a control because it includes the guidance |
