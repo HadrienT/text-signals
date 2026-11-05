@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FOMC labelling</title>
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e2e0da;
+  --accent: #2f5d8a; --accent-ink: #ffffff; --hl: #fde9a8; --ok: #2e7d4f; --warn: #b5532a;
+  --dove: #3f7fbf; --hawk: #c0503a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b; --panel: #202226; --ink: #ececec; --muted: #9a9aa2; --line: #33353b;
+    --accent: #6fa3d6; --accent-ink: #0d1520; --hl: #5a4a1a; --ok: #6cc08f; --warn: #e48b63;
+    --dove: #79aee3; --hawk: #e88a75;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0 12px 0 0; }
+.tabs button, .codes button { border: 1px solid var(--line); background: var(--panel);
+  color: var(--ink); border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+.tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.codes { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 16px;
+  border-bottom: 1px solid var(--line); }
+.codes button { padding: 2px 7px; font-size: 13px; }
+.codes button.done { border-color: var(--ok); color: var(--ok); }
+.codes button.noaudio { opacity: .4; }
+.codes button.cur { outline: 2px solid var(--accent); }
+main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 16px; }
+#player { position: sticky; top: 0; background: var(--panel); padding-bottom: 8px; z-index: 1; }
+#player audio { width: 100%; }
+.speed button { border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 13px; }
+.speed button.on { background: var(--accent); color: var(--accent-ink); }
+#text p { margin: 0 0 10px; }
+#text span { cursor: pointer; border-radius: 3px; }
+#text span.now { background: var(--hl); }
+.field { border-top: 1px solid var(--line); padding: 10px 0; }
+.field:first-child { border-top: 0; }
+.field h3 { font-size: 14px; margin: 0 0 4px; display: flex; justify-content: space-between;
+  gap: 8px; }
+.help { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+details { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.choices button { min-width: 44px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--ink); border-radius: 6px; padding: 5px 8px; cursor: pointer; font: inherit; }
+.choices button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.choices button.neg { color: var(--dove); } .choices button.pos { color: var(--hawk); }
+.choices button.on.neg, .choices button.on.pos { color: var(--accent-ink); }
+.missing h3 { color: var(--warn); }
+label.unsure { font-weight: normal; font-size: 12px; color: var(--muted); white-space: nowrap; }
+input[type=number] { width: 70px; font: inherit; padding: 3px; background: var(--panel);
+  color: var(--ink); border: 1px solid var(--line); border-radius: 4px; }
+textarea { width: 100%; min-height: 50px; font: inherit; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px; }
+.bar { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+.bar button { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+  padding: 8px 16px; font: inherit; cursor: pointer; }
+.bar button:disabled { opacity: .45; cursor: default; }
+#msg { font-size: 13px; color: var(--muted); }
+.legend { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Annotation des communiqués FOMC</h1>
+  <div class="tabs">
+    <button data-pass="practice">Entraînement</button>
+    <button data-pass="first">Annotation</button>
+    <button data-pass="second">2e passe</button>
+  </div>
+  <span class="legend">−2 colombe (taux plus bas) … +2 faucon (taux plus hauts)</span>
+</header>
+<div class="codes" id="codes"></div>
+<main>
+  <section>
+    <div id="player">
+      <h2 id="title" style="font-size:16px;margin:0 0 6px">Choisis un communiqué</h2>
+      <audio id="audio" controls preload="auto"></audio>
+      <div class="speed" id="speed"></div>
+    </div>
+    <div id="text"></div>
+  </section>
+  <section>
+    <form id="form" onsubmit="return false"></form>
+    <div class="bar"><button id="save" disabled>Enregistrer et suivant</button><span id="msg"></span></div>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const STANCE = ["forward_guidance","inflation_assessment","labor_market_assessment","growth_assessment","balance_sheet"];
+const LABELS = {policy_action:"Décision du jour", forward_guidance:"Guidance (la suite des taux)",
+  inflation_assessment:"Inflation", labor_market_assessment:"Emploi", growth_assessment:"Croissance",
+  balance_sheet:"Bilan (achats d'obligations)", risk_balance:"Balance des risques", dissents:"Votes contre"};
+let fields = [], status = null, pass = "practice", code = null, answer = {}, sentences = [];
+
+async function api(path, opts) { const r = await fetch(path, opts); return [r.status, await r.json()]; }
+
+function choiceRow(name, options) {
+  const row = document.createElement("div"); row.className = "choices";
+  for (const [value, text, cls] of options) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+    if (cls) b.classList.add(cls);
+    b.onclick = () => { answer[name] = value; render(); };
+    if (name in answer && answer[name] === value) b.classList.add("on");
+    row.appendChild(b);
+  }
+  return row;
+}
+
+function renderField(def) {
+  const f = def.field, box = document.createElement("div"); box.className = "field";
+  const head = document.createElement("h3");
+  head.innerHTML = `<span>${LABELS[f]}</span>`;
+  const u = document.createElement("label"); u.className = "unsure";
+  u.innerHTML = `<input type="checkbox"> pas sûr`;
+  const cb = u.querySelector("input"); cb.checked = (answer.unsure || []).includes(f);
+  cb.onchange = () => { const s = new Set(answer.unsure || []); cb.checked ? s.add(f) : s.delete(f); answer.unsure = [...s]; };
+  head.appendChild(u); box.appendChild(head);
+  const help = document.createElement("p"); help.className = "help"; help.textContent = def.fr; box.appendChild(help);
+  const en = document.createElement("details"); en.innerHTML = `<summary>Définition officielle (anglais)</summary>${def.en}`; box.appendChild(en);
+  if (STANCE.includes(f)) {
+    box.appendChild(choiceRow(f, [[-2,"−2","neg"],[-1,"−1","neg"],[0,"0"],[1,"+1","pos"],[2,"+2","pos"],[null,"vide"]]));
+    if (!(f in answer)) box.classList.add("missing");
+  } else if (f === "policy_action") {
+    box.appendChild(choiceRow(f, [["raise","hausse"],["cut","baisse"],["hold","maintien"],["no_rate_decision","pas de décision de taux"]]));
+    if (answer.policy_action === "raise" || answer.policy_action === "cut") {
+      const n = document.createElement("div"); n.style.marginTop = "6px";
+      n.innerHTML = `Taille en pb (25 = 1/4 point) : <input type="number" step="25">`;
+      const inp = n.querySelector("input"); inp.value = Math.abs(answer.change_bp ?? 25);
+      const set = () => { const v = Math.abs(parseInt(inp.value || "0", 10)); answer.change_bp = answer.policy_action === "cut" ? -v : v; };
+      inp.oninput = set; set(); box.appendChild(n);
+    } else if (answer.policy_action) { answer.change_bp = answer.policy_action === "hold" ? 0 : null; }
+    if (!("policy_action" in answer)) box.classList.add("missing");
+  } else if (f === "risk_balance") {
+    box.appendChild(choiceRow(f, [["inflation","vers l'inflation"],["balanced","équilibrée"],["growth","vers la croissance"],[null,"vide"]]));
+    if (!(f in answer)) box.classList.add("missing");
+  } else if (f === "dissents") {
+    const d = document.createElement("div"); d.className = "choices";
+    for (const [k, t] of [["dissents_tighter","pour plus de fermeté"],["dissents_easier","pour plus de souplesse"],["dissents_other","autre"]]) {
+      const w = document.createElement("label"); w.style.marginRight = "12px";
+      w.innerHTML = `${t} <input type="number" min="0" step="1">`;
+      const inp = w.querySelector("input"); inp.value = answer[k] ?? 0; answer[k] = answer[k] ?? 0;
+      inp.oninput = () => { answer[k] = Math.max(0, parseInt(inp.value || "0", 10)); };
+      d.appendChild(w);
+    }
+    box.appendChild(d);
+  }
+  return box;
+}
+
+function complete() {
+  return ["policy_action","risk_balance",...STANCE].every((f) => f in answer);
+}
+
+function render() {
+  const form = $("#form"); form.innerHTML = "";
+  if (!code) return;
+  for (const def of fields) form.appendChild(renderField(def));
+  const notes = document.createElement("div"); notes.className = "field";
+  notes.innerHTML = `<h3>Notes (facultatif)</h3><textarea></textarea>`;
+  const ta = notes.querySelector("textarea"); ta.value = answer.notes || "";
+  ta.oninput = () => { answer.notes = ta.value; };
+  form.appendChild(notes);
+  $("#save").disabled = !complete();
+  $("#msg").textContent = complete() ? "" : "Chaque champ demande une réponse, « vide » compris.";
+}
+
+function renderCodes() {
+  const box = $("#codes"); box.innerHTML = "";
+  for (const item of status.passes[pass]) {
+    const b = document.createElement("button"); b.textContent = item.code;
+    if (item.done) b.classList.add("done");
+    if (!item.audio) { b.classList.add("noaudio"); b.title = "audio pas encore prêt"; }
+    if (item.code === code) b.classList.add("cur");
+    b.onclick = () => openCode(item.code);
+    box.appendChild(b);
+  }
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.pass === pass));
+}
+
+async function openCode(c) {
+  code = c; renderCodes();
+  const [st, s] = await api(`/api/statement/${c}`);
+  const audio = $("#audio"); const text = $("#text"); text.innerHTML = "";
+  if (st !== 200) { $("#title").textContent = `${c} : audio pas encore prêt`; audio.removeAttribute("src"); sentences = []; }
+  else {
+    $("#title").textContent = s.title; audio.src = `/audio/${c}`; sentences = s.sentences;
+    const p = document.createElement("p");
+    sentences.forEach((x, i) => { const sp = document.createElement("span"); sp.textContent = x.text + " ";
+      sp.dataset.i = i; sp.onclick = () => { audio.currentTime = x.start; audio.play(); }; p.appendChild(sp); });
+    text.appendChild(p);
+  }
+  const [, saved] = await api(`/api/labels/${pass}/${c}`);
+  answer = saved ? { ...saved } : {};
+  render();
+}
+
+$("#audio").ontimeupdate = () => {
+  const t = $("#audio").currentTime;
+  document.querySelectorAll("#text span").forEach((sp) => {
+    const x = sentences[sp.dataset.i]; const on = t >= x.start && t < x.end;
+    if (on && !sp.classList.contains("now")) sp.scrollIntoView({ block: "nearest" });
+    sp.classList.toggle("now", on);
+  });
+};
+
+for (const r of [0.8, 1, 1.25, 1.5, 1.75, 2]) {
+  const b = document.createElement("button"); b.textContent = `${r}×`;
+  b.onclick = () => { $("#audio").playbackRate = r; document.querySelectorAll("#speed button").forEach((x) => x.classList.toggle("on", x === b)); };
+  if (r === 1) b.classList.add("on");
+  $("#speed").appendChild(b);
+}
+
+$("#save").onclick = async () => {
+  const body = { ...answer }; delete body.code; delete body.pass; delete body.labelled_at;
+  for (const k of ["guide_version","schema_version"]) delete body[k];
+  if (!["raise","cut"].includes(body.policy_action)) body.change_bp = body.policy_action === "hold" ? 0 : null;
+  const [st, r] = await api(`/api/labels/${pass}/${code}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (st !== 200) { $("#msg").textContent = `Erreur : ${r.error}`; return; }
+  [, status] = await api("/api/status");
+  const list = status.passes[pass]; const i = list.findIndex((x) => x.code === code);
+  const next = list.slice(i + 1).find((x) => !x.done && x.audio) || list.find((x) => !x.done && x.audio);
+  if (next) openCode(next.code); else { renderCodes(); $("#msg").textContent = "Enregistré. Tout est fait pour cette passe."; }
+};
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => { pass = b.dataset.pass; code = null; answer = {}; renderCodes(); render(); $("#text").innerHTML = ""; $("#title").textContent = "Choisis un communiqué"; });
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { e.preventDefault(); const a = $("#audio"); a.paused ? a.play() : a.pause(); }
+});
+
+(async () => { [, fields] = await api("/api/fields"); [, status] = await api("/api/status"); renderCodes(); })();
+</script>
+</body>
+</html>
