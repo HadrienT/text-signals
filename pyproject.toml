@@ -11,6 +11,9 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.1.1",
     "pydantic>=2.7",
+    "safetensors>=0.8.0",
+    "torch==2.6.0",
+    "transformers>=4.57,<5",
 ]
 
 [dependency-groups]
@@ -43,3 +46,13 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 testpaths = ["tests"]
+
+# The encoder baselines (protocol §5.2) run PyTorch on the host's V100s, whose driver supports
+# CUDA 12.4: take torch from the matching PyTorch index, everything else from PyPI.
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
