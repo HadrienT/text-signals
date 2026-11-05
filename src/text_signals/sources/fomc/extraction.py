@@ -17,6 +17,7 @@ measures the surprise in the decision (protocol §6.2).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -189,3 +190,44 @@ def evidence_not_in_text(extraction: StatementExtraction, text: str) -> list[str
         for name, span in evidence_spans(extraction).items()
         if _normalise(span) not in haystack
     ]
+
+
+# The aggregate scores (protocol §5.2, fixed 2026-11-06 before any model output was seen).
+STANCE_FIELDS = (
+    "forward_guidance",
+    "inflation_assessment",
+    "labor_market_assessment",
+    "growth_assessment",
+    "balance_sheet",
+)
+
+
+def tone_score(extraction: StatementExtraction) -> float | None:
+    """Primary LLM score: the equal-weight mean of the stance fields that are filled.
+
+    From −2 (dovish) to +2 (hawkish); ``None`` when no stance field is filled. No weight is
+    chosen, so nothing is fitted to the outcome.
+    """
+    values = [getattr(extraction, f).value for f in STANCE_FIELDS]
+    filled = [v for v in values if v is not None]
+    return sum(filled) / len(filled) if filled else None
+
+
+def guidance_score(extraction: StatementExtraction) -> float | None:
+    """Secondary LLM score: ``forward_guidance`` alone, ``None`` when the statement has none."""
+    value = extraction.forward_guidance.value
+    return None if value is None else float(value)
+
+
+def score_changes(scores: Sequence[float | None]) -> list[float | None]:
+    """H2: each score minus the most recent earlier score that is not missing.
+
+    ``scores`` are in release order. The first score, and every missing score, has no change.
+    """
+    out: list[float | None] = []
+    previous: float | None = None
+    for score in scores:
+        out.append(None if score is None or previous is None else score - previous)
+        if score is not None:
+            previous = score
+    return out

@@ -5,6 +5,9 @@ from text_signals.sources.fomc.extraction import (
     SCHEMA_VERSION,
     StatementExtraction,
     evidence_not_in_text,
+    guidance_score,
+    score_changes,
+    tone_score,
 )
 
 # Part of the statement of 28 October 2026.
@@ -83,3 +86,23 @@ def test_json_schema_carries_the_definitions() -> None:
     schema = StatementExtraction.model_json_schema()
     guidance = schema["$defs"]["ForwardGuidance"]["properties"]["value"]
     assert "-2: an explicit commitment to keep rates low" in guidance["description"]
+
+
+def test_tone_score_is_the_mean_of_the_filled_stance_fields() -> None:
+    ex = _extraction(
+        forward_guidance={"value": 2, "evidence": "decided to maintain"},
+        labor_market_assessment={"value": -1, "evidence": "decided to maintain"},
+    )
+    # inflation +1, guidance +2, labour -1; growth and balance sheet null.
+    assert tone_score(ex) == pytest.approx(2 / 3)
+    assert guidance_score(ex) == 2.0
+
+
+def test_scores_are_missing_when_nothing_is_filled() -> None:
+    ex = _extraction(inflation_assessment=EMPTY)
+    assert tone_score(ex) is None
+    assert guidance_score(ex) is None
+
+
+def test_score_changes_skip_missing_scores() -> None:
+    assert score_changes([0.5, None, 1.0, -0.5]) == [None, None, 0.5, -1.5]
