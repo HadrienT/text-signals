@@ -57,8 +57,10 @@ conference released the same afternoon contributed too; see §4.3.)
 ## 2. Hypotheses
 
 - **H1 (signal).** On FOMC statement days, an LLM tone score explains the change in the 2-year
-  Treasury yield (ΔDGS2), with a coefficient significantly different from zero after controlling
-  for the policy surprise and for the Loughran–McDonald (LM) and FinBERT scores.
+  Treasury yield in the 30-minute statement window (USMPD `UST2Y`, §3.4), with a coefficient
+  significantly different from zero after controlling for the policy surprise (MP1) and for the
+  Loughran–McDonald (LM) and FinBERT scores. *Until 2026-11-05 the outcome was the daily ΔDGS2,
+  which is now a robustness check (§12).*
 - **H2 (incremental content).** The LLM score keeps explanatory power on the *change* in wording
   versus the previous statement, not only on its level.
 - **H3 (look-ahead).** The H1 effect is weaker (i) on meetings after the model's training cutoff
@@ -374,11 +376,56 @@ Fixed before any regression was run (§7).
 
 ### 6.3 Event study
 
-- Regression: ΔDGS2_t = α + β·score_t + γ·controls_t + ε_t, with HAC (Newey–West) standard
-  errors.
-- Each score alone, then together: incremental R² and nested F-tests (LLM over LM and encoder).
+**Model.** Estimated by OLS, one observation per statement:
+
+  Δy_i = α + β·score_i + γ·MP1_i + δ'·baselines_i + ε_i
+
+Δy_i is the 30-minute change in the 2-year yield (USMPD `UST2Y`, in bp). The baselines are the
+LM and encoder scores.
+
+**Primary test (one, fixed in advance).** The test is H0: β_LLM = 0 against a two-sided
+alternative. It uses the 30-minute 2-year yield change, the aggregate LLM score, MP1 and the
+baselines as controls, and the full sample of statements. It is a Wald test with HAC variance.
+Everything else below is secondary.
+
+**Assumptions, and how each is justified or checked.**
+
+| Assumption | If it fails | Check |
+|---|---|---|
+| Exogeneity, E[ε \| X] = 0 | β is biased | Not testable directly. It rests on the design: the text is released before the move, inside a 30-minute window, so there is no reverse causality. The main omitted variable, the decision, is controlled by MP1. The placebos (§6.5) also test it. |
+| Score measured without error | attenuation, β is biased toward 0 | agreement with the hand-labelled set (§6.6). A null result is read in the light of it. |
+| No strong collinearity (score, MP1, baselines) | inflated and unstable β | correlation matrix and VIF, reported. A VIF above 5 is flagged. |
+| Homoskedasticity | wrong standard errors | Breusch–Pagan and White, reported |
+| No residual autocorrelation | wrong standard errors | Breusch–Godfrey and Ljung–Box (4 lags), reported |
+| Normal errors | tests are only asymptotic with T ≈ 250 | Jarque–Bera and QQ-plot, reported |
+
+**Inference, fixed in advance.**
+
+- The main standard errors are **HAC (Newey–West)**, with ⌊4·(T/100)^(2/9)⌋ lags, which is 4
+  for T ≈ 250. They are chosen *a priori* and are **not** selected from the diagnostic tests:
+  choosing the estimator after a pre-test distorts the size of the final test. The diagnostics
+  document the data; they do not choose the method.
+- **Robustness of the inference:**
+  - HC3 standard errors, more reliable in small samples when autocorrelation is absent;
+  - a moving-block pairs bootstrap of β, with blocks of 4 statements and 9,999 replications.
+- **Influential observations:** Cook's distance, with 4/T flagged. The model is re-estimated
+  without the flagged observations and with a Huber robust regression. Both are reported, and no
+  observation is dropped silently.
+- **Nested models** (LLM over LM and encoder): incremental R², and a HAC Wald test on the LLM
+  coefficients. The test is joint when several LLM fields enter.
+- **Effect size:** β is reported in bp per standard deviation of the score, next to its
+  significance.
+- **Multiple testing:** the secondary tests (other outcomes, scores, subsamples, H2) are reported
+  with Holm-adjusted p-values. A conclusion rests on the primary test only.
+
+**Secondary specifications.**
+
+- Each score alone, then together.
 - H2: the same regression on the change in score versus the previous statement.
-- Secondary dependent variables: ΔDGS10 and Δ2s10s.
+- Secondary dependent variables: the 30-minute changes in the 10-year yield (`UST10Y`) and in
+  the 2s10s slope.
+- Robustness outcome: the daily ΔDGS2 (§4.2). Robustness control: ΔDGS3MO in place of MP1
+  (§6.2).
 - Subsamples, reported, never dropped silently: May 1999 onwards; scheduled only; the
   zero-lower-bound periods (December 2008 – December 2015, March 2020 – March 2022), where the
   2-year yield is pinned near zero; with and without press conference days.
@@ -434,6 +481,7 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Main event window: USMPD 30-minute statement window | fixed 2026-11-05 (§3.4) |
 | LM score definition | fixed 2026-11-04 (§5.2) |
 | Policy surprise control: MP1 from USMPD, with ΔDGS3MO as robustness | fixed 2026-11-05 (§6.2) |
+| Primary test, inference (HAC, 4 lags), diagnostics and robustness | fixed 2026-11-05 (§6.3) |
 | H4 in or out | proposed (§2) |
 | Minutes sample start | proposed (§5.1) |
 | Encoder baseline | to choose |
@@ -518,3 +566,5 @@ and the report.
 | 2026-11-05 | USMPD found and inspected; window and control left open (§3.4) | free intraday changes and futures-based surprises would lift two known limitations; no score–outcome relation looked at yet |
 | 2026-11-05 | Main window changed from daily to the USMPD 30-minute statement window; the daily window becomes robustness | it isolates the statement from the press conference and same-day news; it replaces an item fixed on 2026-11-04, before any regression was run |
 | 2026-11-05 | Main policy surprise control: MP1 from USMPD; ΔDGS3MO becomes robustness | the futures-based measure of the literature (Kuttner, 2001); the PCA surprise is rejected as a control because it includes the guidance |
+| 2026-11-05 | H1 outcome restated as the 30-minute 2-year change | follows the window decision above |
+| 2026-11-05 | One primary test; HAC with 4 lags fixed a priori; diagnostics reported, not used to choose; HC3, block bootstrap and Huber as robustness; Holm for secondary tests | each element tied to an assumption; no pre-testing; limits false positives from many specifications |
