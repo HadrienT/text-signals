@@ -498,14 +498,27 @@ an open decision (§7).
      full sample with the contamination stated, and also on its statements' sentences that are
      not in the labelled pool.
 
-3. **LLM structured extraction** with a fixed Pydantic schema, settled in week 2. Candidate
-   fields:
-   - `policy_action`: hike / cut / hold, and size;
-   - `forward_guidance_stance`: −2 … +2, dovish → hawkish;
-   - `inflation_assessment`, `labour_assessment`, `growth_assessment`: −2 … +2;
-   - `balance_of_risks`: categorical;
-   - `changed_phrases`: wording changes versus the previous statement, each with a quote;
-   - `evidence`: a verbatim span for every field, used to check faithfulness.
+3. **LLM structured extraction.** Schema `fomc-statement-v1`, fixed on 2026-11-06, before any
+   model output was seen (`text_signals/sources/fomc/extraction.py`). Sign convention for every
+   stance field: an integer from −2 to +2, **positive = hawkish** (towards higher policy rates),
+   or null when the statement says nothing on it. Every filled field carries a verbatim
+   `evidence` span; a span absent from the text counts as a hallucination (§6.6).
+
+   | Field | Values | Role |
+   |---|---|---|
+   | `policy_action` | raise / cut / hold / no rate decision, and the change in bp | quality check only; not in the tone score, since MP1 measures the decision surprise |
+   | `forward_guidance` | −2 … +2 | signal on the future path of the policy rate: the core of the tone measure |
+   | `inflation_assessment` | −2 … +2 | concern that inflation is too high (−2: too low, deflation risk) |
+   | `labor_market_assessment` | −2 … +2 | judged strength of the labour market |
+   | `growth_assessment` | −2 … +2 | judged strength of economic activity |
+   | `balance_sheet` | −2 … +2 | asset purchases (dovish) and runoff (hawkish); the main remaining tool at the zero lower bound |
+   | `risk_balance` | inflation / balanced / growth | where the main risk is placed |
+   | `dissents` | list: member, preferred tighter / easier / other | votes against the action, a factual sign of a divided Committee |
+
+   The anchors of each −2 … +2 scale are the field descriptions in the code. They are sent to
+   the model inside the JSON schema and are the basis of the hand-labelling guide, so the model
+   and the labeller read the same definitions; changing one requires a new schema version.
+   Wording changes versus the previous statement (H2) and the aggregate score are decided next.
 
    Deterministic decoding (temperature 0, fixed seed). Prompt and schema versioned in the
    repository. Every output stored with model name, prompt version, schema version and decoding
@@ -677,7 +690,8 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Minutes sample start | proposed (§5.1) |
 | Encoder baseline: FinBERT, `finbert_net_negative` | fixed 2026-11-05 (§5.2) |
 | Second encoder baseline: FOMC-RoBERTa | proposed; needs gated access (§5.2) |
-| LLM schema and aggregate score | week 2 |
+| LLM extraction schema `fomc-statement-v1` | fixed 2026-11-06 (§5.2) |
+| LLM aggregate score, treatment of wording changes (H2) | week 2, before any model output |
 | Hand-labelling guide | week 2, before labelling |
 
 If anything changes after results are known, the change and its reason go into the decision log
@@ -782,3 +796,4 @@ and the report.
 | 2026-11-05 | Minutes and press conference transcripts fetched and parsed; release dates checked against four sources | week 1 scope; a one-day error in an event date would void an event study |
 | 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
 | 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
+| 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
