@@ -37,8 +37,8 @@ case study is split by week), plus a pinned `📋 Board` issue.
   maintainer's language (French).
 - `uv` for everything; Python 3.12.
 - `just lint` (ruff + `mypy --strict`) and `just test` must pass before any commit.
-- Work on a branch and open a PR to `main`. End commit messages with
-  `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- Work on a branch and open a PR to `main`. Never add a `Co-Authored-By` trailer to commit
+  messages.
 - Small, incremental commits that tell the story of the work. Never rewrite or backdate history.
 - Notebooks are for exploration only. Anything a result depends on lives in `src/text_signals/` and
   is tested.
