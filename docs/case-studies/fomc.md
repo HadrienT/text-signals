@@ -87,7 +87,8 @@ Negative results get reported. A null H1 with a clean protocol is a valid delive
 | Press conference transcripts | federalreserve.gov (`fomcpresconfYYYYMMDD.htm`, transcripts in PDF) | April 2011 → today | to fetch |
 | 2-year Treasury yield, DGS2 | FRED `fredgraph.csv` (no key) | 1976 → today, daily | fetched |
 | 10-year Treasury yield, DGS10 | FRED `fredgraph.csv` | 1962 → today, daily | fetched |
-| 3-month Treasury yield, DGS3MO | FRED `fredgraph.csv` | 1981 → today, daily | to fetch (control, §6.2) |
+| 3-month Treasury yield, DGS3MO | FRED `fredgraph.csv` | 1981 → today, daily | fetched (robustness control, §6.2) |
+| Upper bound of the fed funds target range, DFEDTARU | FRED `fredgraph.csv` | 2008-12-16 → today, daily | fetched (zero-lower-bound flag, §6.3) |
 | Intraday rate changes and policy surprises (USMPD) | San Francisco Fed, `sffed.us/usmpd` | 280 statements 1994 → 2026-10-28, press conferences from 2011, minutes from 2001 | fetched, parsed, joined to the event table (§3.4) |
 | Loughran–McDonald dictionary | Notre Dame SRAF, master dictionary 1993-2025 (Google Drive) | 86,553 words | fetched, sha256 pinned |
 | FinBERT / hawkish-dovish encoder | Hugging Face | – | to choose (§5.2) |
@@ -105,7 +106,7 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 | Raw | `data/raw/<host>/<path>` | files exactly as fetched (HTML, CSV, PDF) |
 | Provenance | `data/raw/manifest.jsonl` | one JSON line per file: `url`, `final_url`, `fetched_at`, `status_code`, `content_type`, `sha256`, `path`, `note` |
 | Documents | `data/interim/fomc/statements.jsonl` | one `Document` per line (below) |
-| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, LM scores |
+| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s / ΔDGS3MO in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, zero-lower-bound flag `zlb`, LM scores |
 
 `Document` fields: `doc_id`, `corpus`, `doc_type`, `event_date` (last day of the meeting),
 `release_date` (the point-in-time key), `release_time_et` (when the page states it),
@@ -472,9 +473,15 @@ Everything else below is secondary.
   the 2s10s slope.
 - Robustness outcome: the daily ΔDGS2 (§4.2). Robustness control: ΔDGS3MO in place of MP1
   (§6.2).
-- Subsamples, reported, never dropped silently: May 1999 onwards; scheduled only; the
-  zero-lower-bound periods (December 2008 – December 2015, March 2020 – March 2022), where the
-  2-year yield is pinned near zero; with and without press conference days.
+- Subsamples, reported, never dropped silently:
+  - May 1999 onwards;
+  - scheduled meetings only;
+  - with and without press conference days;
+  - the zero-lower-bound periods, when the 2-year yield is pinned near zero, and their
+    complement. A statement is flagged `zlb` when the upper bound of the target range in force
+    on the day before its release (FRED DFEDTARU) is 0.25 percent. The statement that moved to
+    the bound is therefore not flagged, and the one that lifted off is. This gives 76
+    statements: 28 January 2009 → 16 December 2015, and 23 March 2020 → 16 March 2022.
 
 ### 6.4 Out-of-sample test
 
@@ -607,6 +614,7 @@ and the report.
 | 2026-11-04 | Text stored as published | trimming is a scoring choice |
 | 2026-11-04 | Event window anchored on the 3:30 p.m. Treasury fixing | after-close and weekend releases must roll forward |
 | 2026-11-04 | FRED fetched in-repo, not read from `data-ingest` | the pipeline must be rerunnable by a reader; the two copies matched exactly |
+| 2026-11-05 | DGS3MO fetched in-repo; checked against `data-ingest` | 11,786 days on both sides, maximum difference 0, same closed days |
 | 2026-11-04 | LM score definition fixed, dictionary sha256 pinned | fix the baseline before seeing results |
 | 2026-11-05 | Protocol rewritten as a complete study design | one document for goal, data and method; new items marked proposed |
 | 2026-11-05 | USMPD found and inspected; window and control left open (§3.4) | free intraday changes and futures-based surprises would lift two known limitations; no score–outcome relation looked at yet |
@@ -616,3 +624,4 @@ and the report.
 | 2026-11-05 | USMPD row of 4 October 2019 not used; the 11 October 2019 statement leaves the main sample | no Fed release on 4 October; the row has the call date with the release time (§3.4) |
 | 2026-11-05 | Statements released with a speech by the Chair (27 August 2020, 22 August 2025) leave the main sample | no window separates the two; USMPD covers 2020 and not 2025, so its coverage cannot decide |
 | 2026-11-05 | One primary test; HAC with 4 lags fixed a priori; diagnostics reported, not used to choose; HC3, block bootstrap and Huber as robustness; Holm for secondary tests | each element tied to an assumption; no pre-testing; limits false positives from many specifications |
+| 2026-11-05 | Zero-lower-bound flag defined from DFEDTARU, the range in force the day before the release | turns the month ranges of §6.3 into a rule a reader can rerun; 76 statements |
