@@ -91,7 +91,8 @@ Negative results get reported. A null H1 with a clean protocol is a valid delive
 | Upper bound of the fed funds target range, DFEDTARU | FRED `fredgraph.csv` | 2008-12-16 → today, daily | fetched (zero-lower-bound flag, §6.3) |
 | Intraday rate changes and policy surprises (USMPD) | San Francisco Fed, `sffed.us/usmpd` | 280 statements 1994 → 2026-10-28, press conferences from 2011, minutes from 2001 | fetched, parsed, joined to the event table (§3.4) |
 | Loughran–McDonald dictionary | Notre Dame SRAF, master dictionary 1993-2025 (Google Drive) | 86,553 words | fetched, sha256 pinned |
-| FinBERT / hawkish-dovish encoder | Hugging Face | – | to choose (§5.2) |
+| FinBERT (`ProsusAI/finbert`) | Hugging Face, revision `0bc2ac10`, weights sha256 pinned | 250 statements, 3,475 sentences | scored, joined to the event table (§5.2) |
+| FOMC hawkish/dovish classifier (`gtfintechlab/FOMC-RoBERTa`) | Hugging Face, gated (access granted by the authors on request) | – | access to request; contamination checked (§5.2) |
 | Local LLMs | open-weight models served by `llama-server` | – | to choose (week 2) |
 | Hand-labelled statements | written by us | ~60 statements | to do (week 2) |
 
@@ -106,7 +107,9 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 | Raw | `data/raw/<host>/<path>` | files exactly as fetched (HTML, CSV, PDF) |
 | Provenance | `data/raw/manifest.jsonl` | one JSON line per file: `url`, `final_url`, `fetched_at`, `status_code`, `content_type`, `sha256`, `path`, `note` |
 | Documents | `data/interim/fomc/statements.jsonl` | one `Document` per line (below) |
-| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s / ΔDGS3MO in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, zero-lower-bound flag `zlb`, LM scores |
+| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s / ΔDGS3MO in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, zero-lower-bound flag `zlb`, LM scores, FinBERT scores (`finbert_*`) |
+| Model weights | `data/raw/huggingface/` | Hugging Face cache at the pinned revision |
+| Encoder scores | `data/interim/fomc/encoder_scores/<encoder>.jsonl` | one `EncoderScore` per document: model, revision, weights sha256, splitter version, sentences and their class probabilities |
 
 `Document` fields: `doc_id`, `corpus`, `doc_type`, `event_date` (last day of the meeting),
 `release_date` (the point-in-time key), `release_time_et` (when the page states it),
@@ -362,11 +365,63 @@ an open decision (§7).
    - `lm_net_negative = (negative − positive) / tokens`, `lm_uncertainty = uncertainty / tokens`,
      on the full statement text.
    - Known limitation: LM was built from 10-K filings; "inflation" or "tightening" carry no sign.
-2. **Encoder baseline.** Mean sentence-level probability from a finance encoder. Candidates:
-   FinBERT (general financial sentiment) and a hawkish/dovish classifier trained on FOMC text
-   (e.g. Shah, Paturi and Chava, 2023). The second is closer to the task but was trained on
-   labelled FOMC sentences, which is a look-ahead issue of its own: its training period must be
-   recorded like an LLM's cutoff. To choose in week 1.
+2. **Encoder baseline: FinBERT** (fixed on 2026-11-05, before any regression).
+   - Model: `ProsusAI/finbert` (Araci, 2019), BERT-base further pre-trained on Reuters news
+     (TRC2) and fine-tuned on the Financial PhraseBank (Malo et al., 2014), sentences from
+     financial news labelled positive, negative or neutral. Nothing in its training data comes
+     from the Fed, and none of it is market data.
+   - Pinned: revision `0bc2ac10dda6929bcb1f77ccc43c7ec5c424f031` (2026-10-12),
+     `model.safetensors` sha256 `e5897858…9f00`, labels `(positive, negative, neutral)` read from
+     its config and checked at load time. The revision only added a `safetensors` copy of the
+     weights: `pytorch_model.bin` has been unchanged since the first upload of 2020-12-24 (sha256
+     `e15a7b57…54e3`), and the two files agree on all 202 tensors with a maximum difference of 0
+     (checked 2026-11-05).
+   - Unit: the sentence. The statement text, the same full text as LM, is split into paragraphs
+     and then into sentences; a period does not end a sentence after an abbreviation ("U.S.") or
+     a middle initial ("Lisa D. Cook"), and a paragraph that ends on one continues in the next
+     (some old pages break a line inside a name). 250 statements give 3,475 sentences, from 2 to
+     29 per statement; none is longer than the model's 512 tokens.
+   - Score: `finbert_net_negative = mean over sentences of P(negative) − mean of P(positive)`,
+     equal weights, so that its sign matches `lm_net_negative`. The three mean probabilities are
+     kept as well.
+   - Reproducibility (checked 2026-11-05, all 3,475 sentences): two runs on the GPU with the same
+     batch give identical probabilities; batch size 1 instead of 32 moves them by at most
+     2.2·10⁻⁶ and the CPU by at most 5.0·10⁻⁶. float32, evaluation mode, batch 32, torch 2.6.0
+     (CUDA 12.4), transformers 4.57.6, Tesla V100. The sentence probabilities are stored with
+     each document, cached by (text sha256, model, revision, splitter version).
+   - Look-ahead record: BERT was pre-trained on Wikipedia and BooksCorpus (to 2018) and FinBERT
+     was published in August 2019, so its text data ends before 2020; it has seen news about the
+     Fed but no label tied to our outcome. Its role is the "off-the-shelf sentiment" baseline.
+   - Known limitation, visible on the first rows: FinBERT scores economic good news, not policy
+     stance. "Inflation remains elevated." (28 October 2026) gets P(positive) = 0.66. The same
+     sign problem as LM, expected and the reason for the classifier below.
+   - Page residue in the statement texts ("Return to text", "Current FAQs", footnote numbers,
+     on 5 statements) is scored like the rest, as it is for LM; it is mostly neutral.
+
+   **Second encoder: the FOMC hawkish/dovish classifier** of Shah, Paturi and Chava (2023),
+   `gtfintechlab/FOMC-RoBERTa` (RoBERTa-large, labels dovish, hawkish, neutral). Closer to the
+   task, and the baseline a reader will expect the LLM to beat. Status on 2026-11-05: the model is
+   gated on Hugging Face ("manual" approval by the authors); access must be requested from the
+   maintainer's account before it can be scored. What is already known:
+   - Its labelled data (repository `gtfintechlab/fomc-hawkish-dovish`, folder
+     `training_data/test-and-training`, split seed 5768: 1,903 training and 476 test sentences,
+     2,326 distinct) come from meeting minutes, press conference transcripts and speeches,
+     1996 → 2022. **No statement is in it.**
+   - But statements repeat sentences that also appear in the minutes and press conferences. A
+     normalised verbatim match (lower case, alphanumerics only, sentences of 40 characters or
+     more) finds 52 labelled sentences inside our statements, and **152 of the 250 statements
+     contain at least one**, including 27 of the 32 statements released after 2022 (all but
+     the framework statement of 22 August 2025 and the four from June 2026 on). Contamination
+     is therefore not limited to the training years: the boilerplate the model was trained on is
+     still in use. A pre/post-2022 split alone would not give a clean test.
+   - The `year` column of the released files is not a reliable date: a sentence with the 2020
+     guidance ("…inflation has risen to 2 percent and is on track to moderately exceed 2 percent
+     for some time") carries the year 2001. The look-ahead check above uses the text, not the
+     column.
+   - Proposed, to fix before it is scored: run it as a second encoder baseline, report it on the
+     full sample with the contamination stated, and also on its statements' sentences that are
+     not in the labelled pool.
+
 3. **LLM structured extraction** with a fixed Pydantic schema, settled in week 2. Candidate
    fields:
    - `policy_action`: hike / cut / hold, and size;
@@ -544,7 +599,8 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Primary test, inference (HAC, 4 lags), diagnostics and robustness | fixed 2026-11-05 (§6.3) |
 | H4 in or out | proposed (§2) |
 | Minutes sample start | proposed (§5.1) |
-| Encoder baseline | to choose |
+| Encoder baseline: FinBERT, `finbert_net_negative` | fixed 2026-11-05 (§5.2) |
+| Second encoder baseline: FOMC-RoBERTa | proposed; needs gated access (§5.2) |
 | LLM schema and aggregate score | week 2 |
 | Hand-labelling guide | week 2, before labelling |
 
@@ -564,6 +620,8 @@ and the report.
   standard errors will be wide.
 - Pinned rates at the zero lower bound flatten the 2-year yield's response for several years.
 - LLM look-ahead: most open-weight models have read the whole history of the corpus (§6.7).
+- FinBERT measures news sentiment, not policy stance; the FOMC classifier measures stance but was
+  trained on sentences that 152 of our 250 statements contain (§5.2).
 
 ---
 
@@ -589,6 +647,8 @@ and the report.
 
 ## 11. References
 
+- Araci, D. (2019). FinBERT: Financial Sentiment Analysis with Pre-trained Language Models.
+  arXiv:1908.10063. Model `ProsusAI/finbert` on Hugging Face.
 - Acosta, M., Ajello, A., Bauer, M., Loria, F. and Miranda-Agrippino, S. (2025). Financial
   Market Effects of FOMC Communication: Evidence from a New Event-Study Database. *Federal
   Reserve Bank of San Francisco Working Paper* 2025-30, doi:10.24148/wp2025-30. Database:
@@ -606,8 +666,14 @@ and the report.
 - Nakamura, E. and Steinsson, J. (2018). High-Frequency Identification of Monetary
   Non-Neutrality: The Information Effect. *Quarterly Journal of Economics* 133(3), 1283–1330.
   Surprise as a principal component of futures changes.
+- Malo, P., Sinha, A., Korhonen, P., Wallenius, J. and Takala, P. (2014). Good Debt or Bad Debt:
+  Detecting Semantic Orientations in Economic Texts. *Journal of the Association for Information
+  Science and Technology* 65(4), 782–796. The Financial PhraseBank, FinBERT's training labels.
 - Shah, A., Paturi, S. and Chava, S. (2023). Trillion Dollar Words: A New Financial Dataset, Task
-  & Market Analysis. *ACL*.
+  & Market Analysis. *Proceedings of the 61st Annual Meeting of the Association for
+  Computational Linguistics (Volume 1: Long Papers)*, 6664–6679, doi:10.18653/v1/2023.acl-long.368.
+  Data and code: `https://github.com/gtfintechlab/fomc-hawkish-dovish`; model
+  `gtfintechlab/FOMC-RoBERTa`.
 
 ---
 
@@ -632,3 +698,5 @@ and the report.
 | 2026-11-05 | Statements released with a speech by the Chair (27 August 2020, 22 August 2025) leave the main sample | no window separates the two; USMPD covers 2020 and not 2025, so its coverage cannot decide |
 | 2026-11-05 | One primary test; HAC with 4 lags fixed a priori; diagnostics reported, not used to choose; HC3, block bootstrap and Huber as robustness; Holm for secondary tests | each element tied to an assumption; no pre-testing; limits false positives from many specifications |
 | 2026-11-05 | Zero-lower-bound flag defined from DFEDTARU, the range in force the day before the release | turns the month ranges of §6.3 into a rule a reader can rerun; 76 statements |
+| 2026-11-05 | Encoder baseline: FinBERT, mean over sentences of P(negative) − P(positive); revision and weights pinned | the off-the-shelf sentiment baseline, with no Fed text in its training; fixed before any regression |
+| 2026-11-05 | FOMC-RoBERTa proposed as a second encoder; contamination measured first | it measures stance, but 152 of 250 statements contain a sentence of its labelled data, including 27 of the 32 released after 2022 |
