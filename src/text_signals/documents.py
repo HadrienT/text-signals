@@ -31,3 +31,6 @@ class Document(BaseModel):
     raw_sha256: str  # sha256 of the raw file as fetched (see the fetch manifest)
     title: str
     text: str
+    # Publication status stated by the source when it revises a document after release, e.g. a
+    # press conference transcript first posted as "PRELIMINARY" and later as "FINAL".
+    source_status: str | None = None
