@@ -254,6 +254,23 @@ are therefore still made before seeing results.
    That leaves 247 of 250 statements. The columns are `confounded_chair_speech` and
    `in_main_sample` in the event table.
 
+   **Why the rule removes only these two statements (checked 2026-11-05).**
+   - **Chair speeches.** We compared each USMPD statement time with every Chair speech that has
+     a time in the Fed's speech index (`ne-speeches.json`; times from December 2008). Over 151
+     statements, the only speech within two hours of a statement is 27 August 2020, at 0
+     minutes. We checked 22 August 2025, which is not in USMPD, against our own release time:
+     also 0 minutes.
+   - **What this check cannot cover.** There are no speech times before December 2008, and the
+     index holds speeches only, not press conferences, testimony or interviews.
+   - **Press conferences** are not a confound for the main window, because it closes before the
+     conference starts. From the USMPD timestamps:
+
+     | Period | Statement → press conference | End of the +20 min window |
+     |---|---|---|
+     | 2011–2012 | 12:30 → 14:15, 105 min | 85 min before |
+     | 2013 → 2026 | 14:00 → 14:30, 30 min | 10 min before |
+     | 3 and 15 March 2020 (unscheduled) | 60 and 90 min | 40 and 70 min before |
+
 ---
 
 ## 4. Timing: the point-in-time rule
