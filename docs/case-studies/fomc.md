@@ -671,11 +671,48 @@ Everything else below is secondary.
 
 ### 6.6 Evaluation of the extraction
 
-- Hand-label about 60 statements, stratified by decade and policy regime, **before** looking at
-  model outputs.
-- Per-field accuracy or MAE; Cohen's κ against a second labelling pass on a subset; rate of
-  `evidence` spans that do not appear verbatim in the document (hallucination).
-- Compare 2–3 local models on quality, latency and tokens per document.
+**Hand-labelled set** (`sources/fomc/labelling.py`, drawn 2026-11-06, before any model output
+existed). Sample `fomc-label-sample-v1`, seed 20261106, stored in
+`data/labels/fomc_statements_sample_v1.csv` (versioned). From the 247 statements of the main
+sample, 60 are drawn by stratum (decade × zero lower bound or not), in proportion to the stratum
+sizes with at least 4 per stratum (largest-remainder rounding):
+
+| Stratum | Statements | Drawn |
+|---|---|---|
+| 1990s, normal rates | 20 | 6 |
+| 2000s, normal rates | 80 | 15 |
+| 2000s, zero lower bound | 8 | 5 |
+| 2010s, normal rates | 32 | 8 |
+| 2010s, zero lower bound | 49 | 11 |
+| 2020s, normal rates | 40 | 9 |
+| 2020s, zero lower bound | 18 | 6 |
+
+Five practice statements are drawn from the rest of the main sample, to train the labeller; they
+are not scored against the model. 15 of the 60 are labelled a second time, later and without the
+first answers in view, to measure the labeller's own consistency (Cohen's κ). The statements are
+shown under shuffled codes (S01–S60, P1–P5), with no date.
+
+- **Labeller.** The maintainer, who is not a monetary-policy specialist. The labeller applies the
+  written definitions; the binding ones are the schema's field descriptions (§5.2), shown with a
+  plain-French explanation (`HELP_FR`, guide `fomc-label-guide-v1`). The labeller fills the same
+  fields as the model, without evidence spans, and may mark any field "unsure". Every field needs
+  an explicit answer, "empty" included. A field marked unsure too often is a sign that its scale
+  is unclear; it may be simplified to three levels, but only before model outputs are seen.
+- **Practice review.** After the five practice statements, the labeller's reading is discussed
+  with Claude Code. This touches only the practice statements, never the 60.
+- **Listening aid.** The labeller listens to each statement read aloud while the sentence being
+  read is highlighted. The audio is made by the maintainer's local AudioBook pipeline (Fish Audio
+  S2-Pro, reference voice `phil-benson`, a LibriVox reader) from a listening PDF
+  (`write_listening_pdf`) in which fractions are written in words ("5 and a quarter percent")
+  and characters the PDF font cannot draw are made plain; the wording is otherwise the
+  statement's. The labelling page (`label_app.py`, `just label`, port 8772) plays it next to the
+  form and writes `data/labels/fomc_statements_v1/<pass>/<code>.json`.
+- **Not seen by the labeller:** dates, URLs, market data and model outputs.
+
+**Metrics.** Per-field accuracy or MAE against the labels, on the 60 statements; Cohen's κ
+between the two passes of the labeller on the 15; rate of `evidence` spans that do not appear
+verbatim in the document (hallucination); share of model outputs that fail validation.
+Compare 2–3 local models on quality, latency and tokens per document.
 
 ### 6.7 Look-ahead tests (H3)
 
@@ -824,3 +861,4 @@ and the report.
 | 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
 | 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
 | 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
+| 2026-11-06 | Labelling sample v1 drawn (60 + 5 practice, 15 second pass), labeller listens with an audio aid | stratified by decade and regime; the maintainer is not a specialist, so definitions, practice and a consistency check carry the quality |
