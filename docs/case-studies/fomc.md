@@ -306,6 +306,9 @@ DGS2, DGS10 and DGS3MO are daily closing quotes, taken at about **3:30 p.m. ET**
 - Days on which the bond market was closed (empty values in FRED) are skipped on both sides.
 - A release without a stated time is assumed to precede the fixing. This holds for every
   scheduled statement.
+  *Checked 2026-11-05 against USMPD:* all 155 statements without a stated time have a USMPD
+  timestamp before 3:30 p.m. The latest is 15 October 1998 at 3:15 p.m. No event day is
+  shifted by the assumption.
 - Change = value(event day) − value(pre-event day), in basis points.
 
 Two statements roll forward to the next day: Sunday 9 May 2010 (9:15 p.m.) and Sunday 15 March
@@ -482,6 +485,10 @@ Everything else below is secondary.
     on the day before its release (FRED DFEDTARU) is 0.25 percent. The statement that moved to
     the bound is therefore not flagged, and the one that lifted off is. This gives 76
     statements: 28 January 2009 → 16 December 2015, and 23 March 2020 → 16 March 2022.
+    Taking the day *before* the release also protects against FRED's dating, which is not
+    consistent. DFEDTARU moves to 0.50 on the announcement day in 2015 (16 December) but on the
+    effective day in 2022 (17 March, the day after the announcement). On the day before the
+    release, both conventions give the range that was known.
 
 ### 6.4 Out-of-sample test
 
