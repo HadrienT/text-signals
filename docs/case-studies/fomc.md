@@ -538,9 +538,10 @@ an open decision (§7).
      statement with a score, in release order. The model scores each statement alone; it is not
      asked to compare two texts, which would double the prompt and add a source of error.
    - Rejected: a weighted mean (weights would be arbitrary).
-   - **Deferred, not specified (2026-11-06):** weights of the five fields learned by the
-     maintainer's suggestion of a machine-learning variant (for example ridge regression) inside
-     the expanding window of §6.4, compared with `llm_tone` on out-of-sample R². A random
+   - **Deferred, not specified (2026-11-06):** a machine-learning variant suggested by the
+     maintainer, in which the weights of the five fields are learned (for example by ridge
+     regression) inside the expanding window of §6.4 and compared with `llm_tone` on
+     out-of-sample R². A random
      train/validation/test split is ruled out (neighbouring statements share their wording); a
      single chronological split leaves about 50 test statements and doubles the minimum
      detectable effect. To be specified, or dropped, before any score is joined to the outcome.
