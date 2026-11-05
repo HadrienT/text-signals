@@ -72,3 +72,19 @@ def test_current_layout() -> None:
     assert aprmay.meeting_date == date(2024, 5, 1)
     assert aprmay.minutes_url is None and aprmay.minutes_release_date is None
     assert aug.year == 2025 and aug.unscheduled
+
+
+def test_minutes_link_without_the_word_minutes_in_its_url() -> None:
+    # fomchistorical2008.htm: the June 2008 minutes are at /monetarypolicy/fomc20080625.htm.
+    html = """<html><body><div class="panel panel-default">
+      <div class="panel-heading"><h5>June 24-25 Meeting - 2008</h5></div>
+      <div class="row divided-row panel-body"><div class="col-xs-12 col-md-6">
+        <p><a href="/monetarypolicy/2008-fomc-memos.htm">2008 Memos</a></p>
+        <p><a href="/newsevents/press/monetary/20080625a.htm">Statement</a></p>
+        <p>Minutes (Released Jul 16, 2008): <br />
+          <a href="/monetarypolicy/fomc20080625.htm">HTML</a> |
+          <a href="/monetarypolicy/files/fomcminutes20080625.pdf">310 KB PDF</a></p>
+      </div></div></div></body></html>"""
+    [entry] = parse_historical_year(html, 2008)
+    assert entry.minutes_url == "https://www.federalreserve.gov/monetarypolicy/fomc20080625.htm"
+    assert entry.minutes_release_date == date(2008, 7, 16)

@@ -125,10 +125,22 @@ def _is_minutes_html(url: str) -> bool:
     return "minutes" in url.lower() and url.lower().endswith(".htm")
 
 
+def _minutes_url(block: Tag) -> str | None:
+    """The HTML link of the minutes: the first ``.htm`` link of the paragraph that starts with
+    "Minutes", else any ``.htm`` link with "minutes" in its URL. Some pages use a URL without
+    the word (``/monetarypolicy/fomc20080625.htm``, minutes of June 2008)."""
+    for p in block.find_all("p"):
+        if p.get_text(" ", strip=True).lower().startswith("minutes"):
+            for _, url in _links(p):
+                if url.lower().endswith(".htm"):
+                    return url
+    return next((u for _, u in _links(block) if _is_minutes_html(u)), None)
+
+
 def _entry(year: int, label: str, block: Tag) -> CalendarEntry:
     links = _links(block)
     statements = [u for t, u in links if _is_statement(t, u)]
-    minutes = next((u for _, u in links if _is_minutes_html(u)), None)
+    minutes = _minutes_url(block)
     presconf = next((u for _, u in links if re.search(r"fomcpresconf\d{8}\.htm$", u)), None)
     return CalendarEntry(
         year=year,
