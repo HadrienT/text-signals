@@ -518,15 +518,32 @@ an open decision (§7).
    The anchors of each −2 … +2 scale are the field descriptions in the code. They are sent to
    the model inside the JSON schema and are the basis of the hand-labelling guide, so the model
    and the labeller read the same definitions; changing one requires a new schema version.
-   Wording changes versus the previous statement (H2) and the aggregate score are decided next.
 
    Deterministic decoding (temperature 0, fixed seed). Prompt and schema versioned in the
    repository. Every output stored with model name, prompt version, schema version and decoding
    parameters, and cached by (document sha256, model, prompt version) so that long runs can
    resume.
-4. **Aggregate LLM score.** A predefined combination of the fields, fixed *before* the
-   regressions are run, so that no specification is fitted to the result.
-
+4. **Aggregate LLM scores** (fixed on 2026-11-06, before any model output was seen; functions
+   `tone_score`, `guidance_score` and `score_changes` in `extraction.py`).
+   - **Primary, `llm_tone`:** the equal-weight mean of the five stance fields that are filled
+     (`forward_guidance`, `inflation_assessment`, `labor_market_assessment`,
+     `growth_assessment`, `balance_sheet`), from −2 (dovish) to +2 (hawkish). Missing when none
+     is filled; such statements leave the primary test and are counted. No weight is chosen, so
+     nothing is fitted to the outcome.
+   - **Secondary, `llm_guidance`:** `forward_guidance` alone. It tests whether the effect runs
+     through the signal on the future path of rates. Missing when the statement has no
+     forward-looking sentence on rates (frequent before 2003). Holm-corrected with the other
+     secondary tests (§6.3).
+   - **H2, `d_llm_tone`:** the primary score minus the score of the most recent earlier
+     statement with a score, in release order. The model scores each statement alone; it is not
+     asked to compare two texts, which would double the prompt and add a source of error.
+   - Rejected: a weighted mean (weights would be arbitrary).
+   - **Deferred, not specified (2026-11-06):** weights of the five fields learned by the
+     maintainer's suggestion of a machine-learning variant (for example ridge regression) inside
+     the expanding window of §6.4, compared with `llm_tone` on out-of-sample R². A random
+     train/validation/test split is ruled out (neighbouring statements share their wording); a
+     single chronological split leaves about 50 test statements and doubles the minimum
+     detectable effect. To be specified, or dropped, before any score is joined to the outcome.
 ---
 
 ## 6. Method
@@ -691,7 +708,8 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Encoder baseline: FinBERT, `finbert_net_negative` | fixed 2026-11-05 (§5.2) |
 | Second encoder baseline: FOMC-RoBERTa | proposed; needs gated access (§5.2) |
 | LLM extraction schema `fomc-statement-v1` | fixed 2026-11-06 (§5.2) |
-| LLM aggregate score, treatment of wording changes (H2) | week 2, before any model output |
+| LLM aggregate scores: `llm_tone` (primary), `llm_guidance` (secondary), `d_llm_tone` (H2) | fixed 2026-11-06 (§5.2) |
+| Learned field weights in the expanding window | deferred; to specify or drop before scoring meets the outcome (§5.2) |
 | Hand-labelling guide | week 2, before labelling |
 
 If anything changes after results are known, the change and its reason go into the decision log
@@ -797,3 +815,5 @@ and the report.
 | 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
 | 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
 | 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
+| 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
+| 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
