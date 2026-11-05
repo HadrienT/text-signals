@@ -83,8 +83,8 @@ Negative results get reported. A null H1 with a clean protocol is a valid delive
 |---|---|---|---|
 | FOMC meeting calendar | federalreserve.gov: `fomccalendars.htm`, `fomchistoricalYYYY.htm` | 1994 → 2027 (318 meetings and calls) | fetched |
 | FOMC statements | federalreserve.gov press releases (4 URL layouts, 1994 → today) | 250 statements, 1994-02-04 → 2026-10-28 | fetched, parsed |
-| FOMC minutes | federalreserve.gov (`/fomc/MINUTES/…`, `/fomc/minutes/…`, `/monetarypolicy/fomcminutes…`) | links and release dates already parsed from the calendar | to fetch |
-| Press conference transcripts | federalreserve.gov (`fomcpresconfYYYYMMDD.htm`, transcripts in PDF) | April 2011 → today | to fetch |
+| FOMC minutes | federalreserve.gov (`/fomc/MINUTES/…`, `/fomc/minutes/…`, `/monetarypolicy/fomcminutes…`, `/monetarypolicy/fomcYYYYMMDD.htm`) | 262 minutes, released 1994-03-25 → 2026-10-07; median 7,016 words | fetched, parsed, release dates checked (§3.5) |
+| Press conference transcripts | federalreserve.gov (`/mediacenter/files/FOMCpresconfYYYYMMDD.pdf`) | 96 transcripts, 2011-04-27 → 2026-10-28; median 8,663 words | fetched, parsed, dates checked (§3.5) |
 | 2-year Treasury yield, DGS2 | FRED `fredgraph.csv` (no key) | 1976 → today, daily | fetched |
 | 10-year Treasury yield, DGS10 | FRED `fredgraph.csv` | 1962 → today, daily | fetched |
 | 3-month Treasury yield, DGS3MO | FRED `fredgraph.csv` | 1981 → today, daily | fetched (robustness control, §6.2) |
@@ -106,7 +106,7 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 |---|---|---|
 | Raw | `data/raw/<host>/<path>` | files exactly as fetched (HTML, CSV, PDF) |
 | Provenance | `data/raw/manifest.jsonl` | one JSON line per file: `url`, `final_url`, `fetched_at`, `status_code`, `content_type`, `sha256`, `path`, `note` |
-| Documents | `data/interim/fomc/statements.jsonl` | one `Document` per line (below) |
+| Documents | `data/interim/fomc/statements.jsonl`, `minutes.jsonl`, `press_conferences.jsonl` | one `Document` per line (below) |
 | Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s / ΔDGS3MO in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, zero-lower-bound flag `zlb`, LM scores, FinBERT scores (`finbert_*`) |
 | Model weights | `data/raw/huggingface/` | Hugging Face cache at the pinned revision |
 | Encoder scores | `data/interim/fomc/encoder_scores/<encoder>.jsonl` | one `EncoderScore` per document: model, revision, weights sha256, splitter version, sentences and their class probabilities |
@@ -114,7 +114,8 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 `Document` fields: `doc_id`, `corpus`, `doc_type`, `event_date` (last day of the meeting),
 `release_date` (the point-in-time key), `release_time_et` (when the page states it),
 `release_time_source` (`document` or `none`), `unscheduled`, `url`, `raw_sha256` (links to the
-manifest), `title`, `text` (paragraphs separated by a blank line).
+manifest), `title`, `text` (paragraphs separated by a blank line), `source_status` (the status the
+source gives a document it revises after release: `preliminary` or `final` for transcripts).
 
 ### 3.3 Provenance rules
 
@@ -274,6 +275,76 @@ are therefore still made before seeing results.
      | 2011–2012 | 12:30 → 14:15, 105 min | 85 min before |
      | 2013 → 2026 | 14:00 → 14:30, 30 min | 10 min before |
      | 3 and 15 March 2020 (unscheduled) | 60 and 90 min | 40 and 70 min before |
+
+### 3.5 Minutes and press conference transcripts (fetched 2026-11-05)
+
+Fetched for the second stage of the study (minutes and press conferences as events of their own,
+§4.1 and §5.1). Nothing below has been joined to market data or scored yet.
+
+**Minutes.** 262 HTML pages, one per meeting with minutes, released 1994-03-25 → 2026-10-07.
+Median 7,016 words (3,253 to 14,374), about 20 times a statement. Released a median 21 days after
+the meeting from 2005 (175 minutes), 50 days before.
+
+- *Four URL layouts.* The calendar parser first missed the minutes of June 2008, whose link is
+  `/monetarypolicy/fomc20080625.htm` (no "minutes" in the URL). The minutes link is now the HTML
+  link of the calendar paragraph that starts with "Minutes".
+- *Text.* Split at block elements (paragraphs, lists, block quotes, table rows, line breaks),
+  not only at `<p>`: legacy pages put the policy directive in a `<blockquote>` inside a layout
+  table, the votes directly in table cells, the standing authorizations in lists. Legacy pages
+  also repeat "Return to top" between sections; the body ends at the last one. Checked on all
+  262 pages: the parsed text holds at least 98% of the words of the page's main container (the
+  rest is the title bar and the navigation). A first `<p>`-only parser kept 12% of the September
+  1996 minutes and 70–89% of 22 others.
+- *Release dates.* The minutes pages do not state them; the calendar does ("Released Jul 16,
+  2008"). Each of the 262 dates was checked against: the "Last update" stamp of the page (equal
+  to the calendar for 233 pages; the others were edited later), the Fed's press release index
+  (`federalreserve.gov/json/ne-press.json`, from 2006: 167 checked), and the USMPD minutes sheet
+  (from 2001: 207). Where they disagree, Internet Archive captures of the Fed's FOMC page
+  (`web.archive.org`, captures of `federalreserve.gov/fomc/`, in which a minutes link not yet
+  live is commented out) settle it:
+
+  | Minutes of | Calendar | USMPD | Other evidence | Release date used |
+  |---|---|---|---|---|
+  | 6 Nov 2001 | 13 Dec 2001 | 31 Dec 2001 | page stamp "December 13, 2001, 2:00 PM"; first archive capture of the page 13 Dec 2001, 23:00 UTC | **13 Dec 2001** (USMPD wrong) |
+  | 28 Oct 2003 | 11 Dec 2003 | 10 Dec 2003 | page stamp "December 10, 2003, 2:00 PM"; no archive capture on 10–11 Dec | **10 Dec 2003** (calendar wrong, probable) |
+  | 21 Sep 2004 | 11 Nov 2004 | 11 Nov 2004 | 11 Nov 2004 was a federal holiday, DGS2 has no value; page stamp "November 12, 2004, 2:00 PM"; the FOMC page has no live link at 8:58 p.m. ET on 11 Nov and one at 7:58 p.m. ET on 12 Nov | **12 Nov 2004** (calendar and USMPD wrong) |
+  | 10 Nov 2004 | 16 Dec 2004 | 16 Dec 2004 | page stamp 17 Dec; FOMC page: no live link at 4:20 a.m. ET on 15 Dec, live at 9:40 p.m. ET on 16 Dec | **16 Dec 2004** (the stamp is a later edit) |
+  | 9–10 Dec 2025 | 30 Dec 2025 | 31 Dec 2025 | press release index: 30 Dec 2025, 2:00 p.m. | **30 Dec 2025** (USMPD wrong) |
+  | 15–16 Sep 2026 | 7 Oct 2026 | 8 Oct 2026 | press release index: 7 Oct 2026, 2:00 p.m.; the press conference page says "Released October 07, 2026 at 2:00 p.m." | **7 Oct 2026** (USMPD wrong) |
+
+  The two calendar corrections are coded with their evidence
+  (`minutes.RELEASE_DATE_CORRECTIONS`). The four USMPD minutes dates that are one day late (or,
+  in 2001, 18 days) are to be left out of a minutes event study based on USMPD.
+- *Release times.* USMPD gives 2:00 p.m. for 204 minutes and 1:00 p.m. for three. The Fed's
+  press releases say "For release at 2:00 p.m. EST" for two of these (20 November 2007,
+  20 February 2008) and "12:00 a.m. EST" for the third (2 January 2008). For the first two the
+  USMPD window (12:50–13:20) closes before the release. To be resolved before any minutes event
+  study; it does not touch the statements.
+- *Pages are edited after release.* The September 2026 minutes carry the note "An error in this
+  attendee's job title was corrected on November 3, 2026". The stored file and its sha256 are
+  the version read.
+
+**Press conference transcripts.** 96 PDF transcripts, 2011-04-27 → 2026-10-28, the same 96 dates
+as the USMPD press conference sheet. Median 8,663 words (2,367 to 11,594). Text extracted with
+`pypdf`; running headers and page numbers removed; one paragraph per speaker turn ("CHAIRMAN
+POWELL.", "MICHELLE SMITH."), speaker names kept as published (including typos such as
+"CHAIRMAN BERNAKE").
+
+- *URL.* Recent meeting pages no longer link the PDF; it is served at
+  `/mediacenter/files/FOMCpresconfYYYYMMDD.pdf`, built from the date in the press conference
+  page's URL.
+- *Date.* The press conference is live, so its content is public on the day it is held, even
+  though the transcript is posted later; that day is the release date. It is not always the
+  meeting date: the call of 2 March 2020 was followed by the press conference of 3 March. The
+  date in each transcript's header is checked against it.
+- *A meeting without a page.* The page for 28 January 2026 answers 404, so the calendar has no
+  link, but the transcript is served (Chair Powell, FINAL) and USMPD has the press conference at
+  2:30 p.m. It is added explicitly (`press_conferences.WITHOUT_PAGE`); any other scheduled
+  meeting since 2019 without a link is logged.
+- *Preliminary and final versions.* The Fed first posts a PRELIMINARY transcript and replaces it
+  with a FINAL one. On 2026-11-05, 95 are FINAL and one is PRELIMINARY (28 October 2026). The
+  status is stored with each document and the sha256 pins the version read; the October 2026
+  transcript is to be refetched before it is scored.
 
 ---
 
@@ -620,6 +691,9 @@ and the report.
   standard errors will be wide.
 - Pinned rates at the zero lower bound flatten the 2-year yield's response for several years.
 - LLM look-ahead: most open-weight models have read the whole history of the corpus (§6.7).
+- Minutes release dates rest on the Fed's calendar, corrected in two cases, and USMPD has four
+  minutes dates one day or more off (§3.5). Transcripts and minutes pages can be revised after
+  release; the version read is pinned by its sha256.
 - FinBERT measures news sentiment, not policy stance; the FOMC classifier measures stance but was
   trained on sentences that 152 of our 250 statements contain (§5.2).
 
@@ -700,3 +774,6 @@ and the report.
 | 2026-11-05 | Zero-lower-bound flag defined from DFEDTARU, the range in force the day before the release | turns the month ranges of §6.3 into a rule a reader can rerun; 76 statements |
 | 2026-11-05 | Encoder baseline: FinBERT, mean over sentences of P(negative) − P(positive); revision and weights pinned | the off-the-shelf sentiment baseline, with no Fed text in its training; fixed before any regression |
 | 2026-11-05 | FOMC-RoBERTa proposed as a second encoder; contamination measured first | it measures stance, but 152 of 250 statements contain a sentence of its labelled data, including 27 of the 32 released after 2022 |
+| 2026-11-05 | Minutes and press conference transcripts fetched and parsed; release dates checked against four sources | week 1 scope; a one-day error in an event date would void an event study |
+| 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
+| 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
