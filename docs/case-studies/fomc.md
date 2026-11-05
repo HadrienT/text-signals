@@ -472,8 +472,13 @@ an open decision (§7).
    **Second encoder: the FOMC hawkish/dovish classifier** of Shah, Paturi and Chava (2023),
    `gtfintechlab/FOMC-RoBERTa` (RoBERTa-large, labels dovish, hawkish, neutral). Closer to the
    task, and the baseline a reader will expect the LLM to beat. Status on 2026-11-05: the model is
-   gated on Hugging Face ("manual" approval by the authors); access must be requested from the
-   maintainer's account before it can be scored. What is already known:
+   gated on Hugging Face ("manual" approval by the authors). A read token from the maintainer's
+   account authenticates but is "not in the authorized list" yet, so nothing has been downloaded
+   or scored. Visible without access, to pin once it is granted: revision
+   `1c0e40cc6f364fe60f92482ffa496f65647f4a34` (last modified 2026-11-03), weights only as
+   `pytorch_model.bin` (1,421,588,461 bytes, sha256 `c7f49f8b…280a`, no `safetensors` copy),
+   licence CC BY-NC 4.0. Label order per the authors' README: `LABEL_0` dovish, `LABEL_1`
+   hawkish, `LABEL_2` neutral, to be checked against the config. What is already known:
    - Its labelled data (repository `gtfintechlab/fomc-hawkish-dovish`, folder
      `training_data/test-and-training`, split seed 5768: 1,903 training and 476 test sentences,
      2,326 distinct) come from meeting minutes, press conference transcripts and speeches,
