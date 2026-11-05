@@ -599,6 +599,36 @@ Everything else below is secondary.
 - **Multiple testing:** the secondary tests (other outcomes, scores, subsamples, H2) are reported
   with Holm-adjusted p-values. A conclusion rests on the primary test only.
 
+**Power, computed 2026-11-05 before any score was joined to the outcome** (`text_signals/power.py`).
+The minimum detectable effect (MDE) is the smallest true effect, in bp of the 30-minute 2-year
+change per standard deviation of the score, that the primary test detects with 80% probability at
+a 5% two-sided size. It uses only the outcome, MP1 and the sample size:
+`MDE = (z₀.₉₇₅ + z₀.₈) · σ_e / sqrt(T · (1 − R²_x))`, where σ_e is the residual standard deviation
+after MP1 and R²_x the share of the score explained by the controls (unknown before scoring, so
+three values are shown). It is checked by simulation: the actual residuals resampled (fat tails
+kept), a synthetic score correlated with MP1, and the primary test itself (OLS, HAC with 4 lags),
+1,000 draws per point.
+
+- What was looked at: the distribution of the outcome on the main sample (247 statements:
+  mean −0.44 bp, standard deviation 5.72 bp, excess kurtosis 5.3, 28% of moves under 1 bp,
+  18 above 10 bp) and its regression on MP1 alone (slope 0.36, R² 0.19, residual standard
+  deviation 5.16 bp, residual excess kurtosis 1.9). No score.
+
+| Sample | T | σ_e (bp) | MDE, R²_x = 0 | R²_x = 0.25 | R²_x = 0.5 | False positives at β = 0 |
+|---|---|---|---|---|---|---|
+| Main | 247 | 5.16 | 0.92 | 1.06 | 1.30 | 6.0% |
+| Zero lower bound | 75 | 3.25 | 1.05 | 1.22 | 1.49 | 8.3% |
+| Outside the zero lower bound | 172 | 5.81 | 1.24 | 1.43 | 1.76 | 6.8% |
+
+The simulated MDE equals the formula's to within the 10% step of the grid. On the main sample,
+the power is 35% for a true effect of 0.5 bp per standard deviation, 85% for 1 bp and 100% for
+2 bp. Reading: an effect of about 1 bp per standard deviation of tone, about 3% of the residual
+variance, is detectable; one of half that size would be missed two times out of three. The HAC
+test rejects a little too often in these samples (6.0% instead of 5%, 8.3% on the 75 ZLB
+statements): a reason to report the HC3 and block-bootstrap p-values next to it, as planned.
+Limits: the synthetic score has no autocorrelation, while the real scores will (statements
+repeat their wording), which lowers the effective sample size and the power.
+
 **Secondary specifications.**
 
 - Each score alone, then together.
@@ -782,3 +812,4 @@ and the report.
 | 2026-11-05 | Minutes and press conference transcripts fetched and parsed; release dates checked against four sources | week 1 scope; a one-day error in an event date would void an event study |
 | 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
 | 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
+| 2026-11-05 | Power computed before scoring: MDE 0.92 bp per score SD on the main sample (1.05 on the ZLB subsample) | sets what a null result can rule out; uses the outcome and MP1 only, no score |
