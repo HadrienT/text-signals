@@ -519,6 +519,12 @@ an open decision (§7).
    the model inside the JSON schema and are the basis of the hand-labelling guide, so the model
    and the labeller read the same definitions; changing one requires a new schema version.
 
+   Prompt `fomc-statement-prompt-v1` (`sources/fomc/prompts.py`, 2026-11-06): the model sees
+   the statement text only (no title, date or URL), is told to use the text alone and not what
+   it knows of the period or of market reactions, to leave a field null rather than guess, and
+   to copy its evidence word for word. The output is constrained by the schema's JSON schema
+   (`response_format` of type `json_schema`). Client and cache: `text_signals/llm.py`; an
+   output that fails validation is stored with its error and counted, not retried silently.
    Deterministic decoding (temperature 0, fixed seed). Prompt and schema versioned in the
    repository. Every output stored with model name, prompt version, schema version and decoding
    parameters, and cached by (document sha256, model, prompt version) so that long runs can
