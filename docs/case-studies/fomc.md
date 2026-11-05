@@ -88,7 +88,7 @@ Negative results get reported. A null H1 with a clean protocol is a valid delive
 | 2-year Treasury yield, DGS2 | FRED `fredgraph.csv` (no key) | 1976 → today, daily | fetched |
 | 10-year Treasury yield, DGS10 | FRED `fredgraph.csv` | 1962 → today, daily | fetched |
 | 3-month Treasury yield, DGS3MO | FRED `fredgraph.csv` | 1981 → today, daily | to fetch (control, §6.2) |
-| Intraday rate changes and policy surprises (USMPD) | San Francisco Fed, `sffed.us/usmpd` | 280 statements 1994 → 2026-10-28, press conferences from 2011, minutes from 2001 | inspected by hand, not in the pipeline (§3.4) |
+| Intraday rate changes and policy surprises (USMPD) | San Francisco Fed, `sffed.us/usmpd` | 280 statements 1994 → 2026-10-28, press conferences from 2011, minutes from 2001 | fetched, parsed, joined to the event table (§3.4) |
 | Loughran–McDonald dictionary | Notre Dame SRAF, master dictionary 1993-2025 (Google Drive) | 86,553 words | fetched, sha256 pinned |
 | FinBERT / hawkish-dovish encoder | Hugging Face | – | to choose (§5.2) |
 | Local LLMs | open-weight models served by `llama-server` | – | to choose (week 2) |
@@ -105,7 +105,7 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 | Raw | `data/raw/<host>/<path>` | files exactly as fetched (HTML, CSV, PDF) |
 | Provenance | `data/raw/manifest.jsonl` | one JSON line per file: `url`, `final_url`, `fetched_at`, `status_code`, `content_type`, `sha256`, `path`, `note` |
 | Documents | `data/interim/fomc/statements.jsonl` | one `Document` per line (below) |
-| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s in bp, LM scores |
+| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, LM scores |
 
 `Document` fields: `doc_id`, `corpus`, `doc_type`, `event_date` (last day of the meeting),
 `release_date` (the point-in-time key), `release_time_et` (when the page states it),
@@ -130,8 +130,9 @@ Center for Monetary Research (Acosta, Ajello, Bauer, Loria and Miranda-Agrippino
 free and needs no key. Its intraday prices come from LSEG Tick History, which we could not buy.
 Its findings, and our own checks of it, go into the report.
 
-**Files inspected on 2026-11-05** (version "Last update: 30 October 2026"), downloaded by hand
-into a scratch directory, not yet into `data/raw/`:
+**Files inspected on 2026-11-05** (version "Last update: 30 October 2026"). `USMPD.xlsx` is
+fetched by the pipeline (`text_signals.sources.fomc.usmpd`) into `data/raw/` with a manifest line;
+the fetched copy has the sha256 below. The ZIP was only inspected by hand:
 
 | File | URL | sha256 |
 |---|---|---|

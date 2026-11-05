@@ -1,7 +1,9 @@
 """Join FOMC statements with Treasury yields (point-in-time) and the LM baseline score.
 
 Output: ``data/processed/fomc/statement_events.csv``, one row per statement, with the release,
-the event and pre-event days, the yield levels and changes (in basis points) and the LM score.
+the event and pre-event days, the daily yield levels and changes (in basis points), the USMPD
+30-minute changes and policy surprises (the main window and control, protocol §3.4), and the LM
+score.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from text_signals.documents import Document
 from text_signals.fetch import Fetcher
 from text_signals.lexicon import LMDictionary, fetch_lm_dictionary, lm_score
 from text_signals.market import event_changes, fetch_fred_series
+from text_signals.sources.fomc.usmpd import fetch_usmpd, statement_changes
 
 log = logging.getLogger(__name__)
 
@@ -58,16 +61,40 @@ def build_events(
     return frame
 
 
+def join_usmpd(events: pd.DataFrame, usmpd: pd.DataFrame) -> pd.DataFrame:
+    """Add the USMPD statement columns by release date; statements without a row get NaN.
+
+    The match is on the date only: USMPD keys an event by its own timestamp, and a statement
+    whose USMPD date differs from our release date is left unmatched on purpose, to be resolved
+    by hand and logged in the protocol, never matched to a nearby date.
+    """
+    return events.merge(usmpd, on="release_date", how="left", validate="many_to_one")
+
+
 def run(
     docs: Sequence[Document], data_dir: Path, *, delay_s: float = 2.0, refresh: bool = False
 ) -> pd.DataFrame:
     with Fetcher(data_dir / "raw", delay_s=delay_s) as fetcher:
         yields = {s: fetch_fred_series(fetcher, s, refresh=refresh) for s in SERIES}
         lm = fetch_lm_dictionary(fetcher)
-    frame = build_events(docs, yields, lm)
+        usmpd, usmpd_rec = fetch_usmpd(fetcher, refresh=refresh)
+    changes = statement_changes(usmpd)
+    mismatch = changes[(changes["MP1_bp"] - changes["MP1_recomputed_bp"]).abs() > 0.01]
+    if not mismatch.empty:
+        log.warning("MP1 recomputation differs from USMPD on %s", list(mismatch["release_date"]))
+    log.info(
+        "USMPD version %s (sha256 %s): %d statement events, MP1 recomputed on %d",
+        usmpd.version,
+        usmpd_rec.sha256[:12],
+        len(changes),
+        len(changes) - len(mismatch),
+    )
+    frame = join_usmpd(build_events(docs, yields, lm), changes)
     out = data_dir / "processed" / "fomc" / "statement_events.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(out, index=False)
     missing = frame["d_DGS2_bp"].isna().sum()
-    log.info("events: %d statements, %d without a yield change", len(frame), missing)
+    log.info("events: %d statements, %d without a daily yield change", len(frame), missing)
+    unmatched = frame.loc[frame["d_UST2Y_30m_bp"].isna(), "doc_id"].tolist()
+    log.info("events: %d statements without a USMPD row: %s", len(unmatched), unmatched)
     return frame
