@@ -3,7 +3,7 @@
 Output: ``data/processed/fomc/statement_events.csv``, one row per statement, with the release,
 the event and pre-event days, the daily yield levels and changes (in basis points), the USMPD
 30-minute changes and policy surprises (the main window and control, protocol §3.4), and the LM
-score.
+and FinBERT baseline scores (protocol §5.2).
 """
 
 from __future__ import annotations
@@ -16,6 +16,13 @@ from pathlib import Path
 import pandas as pd
 
 from text_signals.documents import Document
+from text_signals.encoders import (
+    FINBERT,
+    EncoderScore,
+    load_hf_classifier,
+    provenance,
+    score_documents,
+)
 from text_signals.fetch import Fetcher
 from text_signals.lexicon import LMDictionary, fetch_lm_dictionary, lm_score
 from text_signals.market import event_changes, fetch_fred_series
@@ -93,6 +100,28 @@ def zlb_flags(release_dates: Sequence[date], upper: pd.Series) -> list[bool]:
     return flags
 
 
+def finbert_columns(scores: Sequence[EncoderScore]) -> pd.DataFrame:
+    """FinBERT baseline per document (protocol §5.2, fixed 2026-11-05, before any regression).
+
+    ``finbert_net_negative`` is the mean over sentences of P(negative) − P(positive), so that
+    its sign matches ``lm_net_negative``.
+    """
+    return pd.DataFrame(
+        {
+            "doc_id": [s.doc_id for s in scores],
+            "finbert_n_sentences": [s.n_sentences for s in scores],
+            "finbert_n_truncated": [s.n_truncated for s in scores],
+            "finbert_positive": [s.mean_probs["positive"] for s in scores],
+            "finbert_negative": [s.mean_probs["negative"] for s in scores],
+            "finbert_neutral": [s.mean_probs["neutral"] for s in scores],
+            "finbert_net_negative": [
+                s.mean_probs["negative"] - s.mean_probs["positive"] for s in scores
+            ],
+            "finbert_revision": [s.revision for s in scores],
+        }
+    )
+
+
 def join_usmpd(events: pd.DataFrame, usmpd: pd.DataFrame) -> pd.DataFrame:
     """Add the USMPD statement columns by release date; statements without a row get NaN.
 
@@ -125,6 +154,13 @@ def run(
         lm = fetch_lm_dictionary(fetcher)
         usmpd, usmpd_rec = fetch_usmpd(fetcher, refresh=refresh)
     changes = statement_changes(usmpd)
+    log.info("FinBERT: %s", provenance(FINBERT))
+    finbert = score_documents(
+        docs,
+        FINBERT,
+        lambda: load_hf_classifier(FINBERT, data_dir / "raw" / "huggingface"),
+        data_dir / "interim" / "fomc" / "encoder_scores" / f"{FINBERT.name}.jsonl",
+    )
     mismatch = changes[(changes["MP1_bp"] - changes["MP1_recomputed_bp"]).abs() > 0.01]
     if not mismatch.empty:
         log.warning("MP1 recomputation differs from USMPD on %s", list(mismatch["release_date"]))
@@ -135,7 +171,10 @@ def run(
         len(changes),
         len(changes) - len(mismatch),
     )
-    frame = flag_main_sample(join_usmpd(build_events(docs, yields, lm), changes))
+    frame = build_events(docs, yields, lm).merge(
+        finbert_columns(finbert), on="doc_id", validate="one_to_one"
+    )
+    frame = flag_main_sample(join_usmpd(frame, changes))
     frame["zlb"] = zlb_flags(list(frame["release_date"]), upper)
     out = data_dir / "processed" / "fomc" / "statement_events.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
