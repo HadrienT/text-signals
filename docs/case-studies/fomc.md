@@ -105,7 +105,7 @@ hand-labelled sets are the exception: they cannot be regenerated, so they will b
 | Raw | `data/raw/<host>/<path>` | files exactly as fetched (HTML, CSV, PDF) |
 | Provenance | `data/raw/manifest.jsonl` | one JSON line per file: `url`, `final_url`, `fetched_at`, `status_code`, `content_type`, `sha256`, `path`, `note` |
 | Documents | `data/interim/fomc/statements.jsonl` | one `Document` per line (below) |
-| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, LM scores |
+| Event table | `data/processed/fomc/statement_events.csv` | one row per statement: release, event and pre-event days, daily yield levels, ΔDGS2 / ΔDGS10 / Δ2s10s in bp, USMPD 30-minute changes (2y, 10y, 2s10s), MP1 (published and recomputed), MP2 and USMPD version, main-sample flags, LM scores |
 
 `Document` fields: `doc_id`, `corpus`, `doc_type`, `event_date` (last day of the meeting),
 `release_date` (the point-in-time key), `release_time_et` (when the page states it),
@@ -244,8 +244,15 @@ are therefore still made before seeing results.
 2. **The policy surprise control is MP1 from USMPD** (§6.2). ΔDGS3MO becomes a robustness
    control.
 
-The two statements without a USMPD row (11 October 2019 and 22 August 2025, see the checks
-above) are to be resolved before the regressions, and the outcome is to be logged.
+3. **Main sample (fixed 2026-11-05).** A statement is in the main sample when it has a USMPD
+   30-minute change and was not released together with a speech by the Chair. This rule leaves
+   out three statements, which stay in the table and enter the daily robustness check:
+   - **11 October 2019**, because the USMPD row for it is misdated;
+   - **27 August 2020** and **22 August 2025**, the framework statements released together with
+     Powell's Jackson Hole speeches.
+
+   That leaves 247 of 250 statements. The columns are `confounded_chair_speech` and
+   `in_main_sample` in the event table.
 
 ---
 
@@ -407,7 +414,7 @@ LM and encoder scores.
 
 **Primary test (one, fixed in advance).** The test is H0: β_LLM = 0 against a two-sided
 alternative. It uses the 30-minute 2-year yield change, the aggregate LLM score, MP1 and the
-baselines as controls, and the full sample of statements. It is a Wald test with HAC variance.
+baselines as controls, and the main sample of statements (§3.4). It is a Wald test with HAC variance.
 Everything else below is secondary.
 
 **Assumptions, and how each is justified or checked.**
@@ -589,4 +596,6 @@ and the report.
 | 2026-11-05 | Main window changed from daily to the USMPD 30-minute statement window; the daily window becomes robustness | it isolates the statement from the press conference and same-day news; it replaces an item fixed on 2026-11-04, before any regression was run |
 | 2026-11-05 | Main policy surprise control: MP1 from USMPD; ΔDGS3MO becomes robustness | the futures-based measure of the literature (Kuttner, 2001); the PCA surprise is rejected as a control because it includes the guidance |
 | 2026-11-05 | H1 outcome restated as the 30-minute 2-year change | follows the window decision above |
+| 2026-11-05 | USMPD row of 4 October 2019 not used; the 11 October 2019 statement leaves the main sample | no Fed release on 4 October; the row has the call date with the release time (§3.4) |
+| 2026-11-05 | Statements released with a speech by the Chair (27 August 2020, 22 August 2025) leave the main sample | no window separates the two; USMPD covers 2020 and not 2025, so its coverage cannot decide |
 | 2026-11-05 | One primary test; HAC with 4 lags fixed a priori; diagnostics reported, not used to choose; HC3, block bootstrap and Huber as robustness; Holm for secondary tests | each element tied to an assumption; no pre-testing; limits false positives from many specifications |
