@@ -788,6 +788,55 @@ The "together" model of "each score alone, then together" is the primary test it
 nested comparison (LLM over LM and FinBERT) is reported as the incremental R² of adding
 `llm_tone` to MP1 and the two baselines, whose HAC Wald test is the primary test.
 
+**Secondary test results (2026-11-06).** `python -m text_signals.sources.fomc.study secondary`.
+β per SD of the tested regressor, HAC Wald p and Holm-adjusted p over the 14:
+
+| # | Test | n | β per SD (bp) | p | Holm p |
+|---|---|---|---|---|---|
+| 1 | LLM score alone | 243 | +1.11 | 0.0001 | **0.001** |
+| 2 | LM score alone | 247 | −0.58 | 0.067 | 0.27 |
+| 3 | FinBERT score alone | 247 | −0.65 | 0.009 | 0.079 |
+| 4 | H2: change in LLM score | 242 | +0.85 | 0.010 | 0.079 |
+| 5 | Outcome: 10-year, 30 min | 243 | +0.96 | 0.039 | 0.21 |
+| 6 | Outcome: 2s10s slope, 30 min | 243 | −0.07 | 0.86 | 1.00 |
+| 7 | Outcome: daily ΔDGS2 | 243 | −0.07 | 0.91 | 1.00 |
+| 8 | Control: ΔDGS3MO in place of MP1 | 243 | +1.41 | 0.0007 | **0.009** |
+| 9 | From May 1999 | 231 | +1.13 | 0.001 | **0.011** |
+| 10 | Scheduled meetings only | 230 | +0.84 | 0.019 | 0.13 |
+| 11 | Press conference days | 96 | +0.48 | 0.20 | 0.59 |
+| 12 | Not press conference days | 147 | +1.70 | 0.004 | **0.039** |
+| 13 | Zero lower bound | 74 | +1.04 | 0.035 | 0.21 |
+| 14 | Not zero lower bound | 169 | +1.60 | 0.0009 | **0.010** |
+
+Nested comparison: R² of MP1 and the two baselines 0.198; with `llm_tone` 0.221 (+0.024).
+
+Reading, test by test, with the primary test as the only basis of the conclusion:
+
+- **Scores alone (1–3).** Alone, FinBERT also carries some signal (raw p = 0.009), which
+  disappears once the LLM score is in (primary test); LM is weak alone. The LLM score is the
+  only one that survives the correction.
+- **H2 (4).** The change in tone from the previous statement points the same way (+0.85 bp per
+  SD) but does not survive Holm (0.079): not established.
+- **10-year and slope (5, 6).** The 10-year moves about as much as the 2-year (+0.96 bp per SD,
+  not significant after Holm), so the slope does not move. The tone shifts the level of the
+  curve in the window rather than its slope.
+- **Daily ΔDGS2 (7): no effect at all.** At the close-to-close horizon the coefficient is zero
+  (−0.07 bp per SD, p = 0.91). Two readings, which this design cannot separate: the 30-minute
+  reaction is reversed or swamped later in the day (by the press conference from 2011, the
+  minutes or data releases, other news), or the daily change is too noisy to show a 1 bp effect
+  (R² 0.08 against 0.22). It limits what the result says: the tone moves yields **in the
+  window**; there is no evidence here that the move lasts to the close.
+- **Decision control (8).** With ΔDGS3MO in place of MP1 the effect is larger (+1.41 bp per SD):
+  ΔDGS3MO controls for the decision less sharply, and some of the decision surprise loads on the
+  tone. MP1 is the right control, and the primary estimate the lower of the two.
+- **Subsamples (9–14).** The effect holds from May 1999 and outside the zero lower bound; it is
+  smaller, and not significant after Holm, at the zero lower bound (+1.04, n = 74) and on
+  scheduled meetings only (+0.84). It is **much weaker on press conference days** (+0.48 bp per
+  SD, n = 96) than on other days (+1.70): when a press conference follows 30 minutes later, the
+  statement's tone moves the 2-year less inside its own window. A likely reason, not tested here,
+  is that markets wait for the Chair; since 2019 every meeting has a press conference, so this
+  bears on how the result applies today.
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
@@ -1319,3 +1368,4 @@ and the report.
 | 2026-11-06 | Diagnostics: no collinearity, no residual autocorrelation, strong heteroskedasticity, fat tails | reported, not used to change the estimator; HAC is consistent under heteroskedasticity; influence and robustness checks follow (§6.3) |
 | 2026-11-06 | Robustness: HC3, block bootstrap, refit without 19 influential statements and Huber all keep β_LLM positive and significant (Huber 0.73 bp per SD) | the checks fixed in advance; no observation dropped from the primary estimate (§6.3) |
 | 2026-11-06 | Secondary tests listed (14) as one Holm family, before any was run | §6.3 named the kinds of test, not the exact list; fixing it first keeps the multiple-testing correction honest |
+| 2026-11-06 | Secondary tests run: 5 of 14 survive Holm; no effect on the daily ΔDGS2; much weaker on press conference days | reported in full; the conclusion rests on the primary test, limited to the 30-minute window (§6.3) |
