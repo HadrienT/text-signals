@@ -16,7 +16,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from text_signals.event_study import Diagnostics, EventRegression, diagnostics, fit, qq_plot
+from text_signals.event_study import (
+    Diagnostics,
+    EventRegression,
+    Robustness,
+    diagnostics,
+    fit,
+    qq_plot,
+    robustness,
+)
 
 EVENTS = Path("data/processed/fomc/statement_events.csv")
 LLM_SCORES = Path("data/processed/fomc/llm_scores_phi-4.csv")
@@ -113,12 +121,66 @@ def describe_diagnostics(d: Diagnostics) -> str:
     return "\n".join(lines)
 
 
+def primary_robustness(table: pd.DataFrame) -> tuple[Robustness, pd.DataFrame]:
+    """The robustness checks of protocol §6.3 for β_LLM, and the influential statements."""
+    sample = primary_sample(table).reset_index(drop=True)
+    r = robustness(sample, OUTCOME, [SCORE, CONTROL, *BASELINES], SCORE)
+    cols = ["release_date", OUTCOME, SCORE, CONTROL]
+    return r, sample.loc[r.influential, cols]
+
+
+def describe_robustness(r: Robustness, influential: pd.DataFrame, sd: float) -> str:
+    lo, hi = r.bootstrap_ci
+    rows = [
+        ("OLS, HAC (primary)", r.beta, None, r.hac_p),
+        ("OLS, HC3", r.beta, r.hc3_se, r.hc3_p),
+        (
+            f"Block bootstrap ({r.bootstrap_block}, {r.bootstrap_reps:,} reps)",
+            r.beta,
+            r.bootstrap_se,
+            None,
+        ),
+        (
+            f"Without {len(r.influential)} influential (Cook > 4/T), HAC",
+            r.beta_without_influential,
+            None,
+            r.hac_p_without_influential,
+        ),
+        ("Huber robust regression", r.huber_beta, r.huber_se, r.huber_p),
+    ]
+    lines = [
+        f"β of {r.name}, T = {r.n}; per SD = β × {sd:.3f}",
+        "",
+        "| Check | β | β per SD | se | p |",
+        "|---|---|---|---|---|",
+    ]
+    for label, beta, se, p in rows:
+        lines.append(
+            f"| {label} | {beta:.3f} | {beta * sd:.2f} | "
+            f"{'–' if se is None else f'{se:.3f}'} | {'–' if p is None else f'{p:.4f}'} |"
+        )
+    lines += [
+        "",
+        f"Bootstrap 95% interval of β: [{lo:.3f}, {hi:.3f}] "
+        f"(per SD [{lo * sd:.2f}, {hi * sd:.2f}])",
+        "",
+        "Influential statements:",
+        influential.round(2).to_string(index=False),
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     import sys
 
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
     if sys.argv[1:] == ["primary"]:
         print(describe(primary_test(table)))
+        return
+    if sys.argv[1:] == ["robustness"]:
+        r, infl = primary_robustness(table)
+        sd = float(primary_sample(table)[SCORE].std(ddof=1))
+        print(describe_robustness(r, infl, sd))
         return
     if sys.argv[1:] == ["diagnostics"]:
         d = primary_diagnostics(table)

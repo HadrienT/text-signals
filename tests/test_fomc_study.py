@@ -74,3 +74,28 @@ def test_primary_test_uses_the_frozen_specification() -> None:
         "finbert_net_negative",
     ]
     assert r.wald_df == 1 and r.hac_lags == 4 and r.n == n
+
+
+def test_robustness_runner_lists_influential_statements_by_date() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import describe_robustness, primary_robustness
+
+    rng = np.random.default_rng(1)
+    n = 80
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("2000-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = table["llm_tone"] + rng.normal(0, 1, n)
+    table.loc[5, "d_UST2Y_30m_bp"] = 40.0
+    r, infl = primary_robustness(table)
+    assert table.loc[5, "release_date"] in set(infl["release_date"])
+    assert "Huber" in describe_robustness(r, infl, 1.0)
