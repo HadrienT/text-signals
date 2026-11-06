@@ -1284,6 +1284,32 @@ outside the sample, with the reference reading them blind as before.
 - **Recognition probe.** Ask the model to date an anonymised statement. High accuracy means the
   model recognises documents rather than reading them.
 
+**Details (made precise 2026-11-06, before any of the three was run).** Model: Phi-4, stated
+training cutoff June 2024 (taken as 30 June 2024, §5.2).
+
+- **Cutoff split.** The primary regression with `llm_tone × after_cutoff` and `after_cutoff`
+  added; the test is the interaction (H0: same β before and after), HAC. β before and after are
+  reported with their intervals, and the out-of-sample squared-error gain of §6.4 is summed over
+  the statements after the cutoff. **Power is low by construction**: 19 primary-sample
+  statements fall after the cutoff (31 July 2024 to 28 October 2026); with a residual SD near
+  5 bp, only a difference of roughly 3 bp per SD or more could be detected. A null here does not
+  show that look-ahead is absent; the two tests below do not depend on the cutoff.
+- **Anonymisation.** Each statement text is rewritten by `anonymise` (`sources/fomc/
+  lookahead.py`): dates with a month name (with or without day and year) become `[date]`, a
+  month name alone `[month]`, four-digit years `[year]`, and the names of FOMC members, taken
+  from the statements' own vote paragraphs and "Chairman …" phrases, `[member]`, both full name
+  and surname. Nothing else changes: the policy wording, numbers and rates stay. Phi-4 reads the
+  anonymised texts with the chosen procedure (prompt v2, values from the first answer); compared
+  with the original scores: correlation, mean change, share of statements whose `llm_tone`
+  changes, and β of the primary regression on the anonymised score. If the model's reading drew
+  on recognising the date, removing it should move the scores and β.
+- **Recognition probe.** Phi-4 is shown an anonymised statement and asked, in a separate
+  versioned prompt (`fomc-date-probe-v1`), for the year it was most likely released, as JSON
+  `{"year": int}`, temperature 0. Measured on all statements: mean absolute error in years, share
+  within one year, against a naive guess (the median year of the sample) and against the model's
+  guess on the statements after its cutoff. Low error means the model can place a text in time,
+  so it could also bring knowledge of what followed; it does not by itself show that it did.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1452,3 +1478,4 @@ and the report.
 | 2026-11-06 | Out-of-sample: +2.1% R² over the baseline, Clark–West p = 0.003; gains in 2000–2008 and 2022, losses in most later years | reported with the yearly path, which limits the result to the period before routine press conferences (§6.4) |
 | 2026-11-06 | Placebo details fixed: 9,999 permutations of the score on the HAC t; previous score in place of and next to the current one | §6.5 left the test and the statistic open; a persistent score needs the second form to be a fair placebo |
 | 2026-11-06 | Placebos: permutation p = 0.005 and the previous score alone has no effect; next to the current score the previous one is negative (p = 0.034), against the placebo's expectation | reported as a failed expectation; read after the fact as the market pricing the change in tone (§6.5) |
+| 2026-11-06 | Look-ahead tests specified: cutoff interaction (19 statements after, low power stated in advance), anonymisation rule and rescoring, dating probe | §6.7 left the statistics and the anonymisation rule open; fixed before running |
