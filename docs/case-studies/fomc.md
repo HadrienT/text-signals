@@ -729,6 +729,10 @@ output on the sample had been seen when this was decided. The five practice labe
   same prompt (v2) and schema; `extract.py import` validates them and stores them as
   `ExtractionRecord` (decoding and latency unknown, so null). The readers' own notes on the
   fields they were unsure of are kept with the run.
+- **The reference read in series, the local models one at a time.** Each Claude reader
+  filled 20 to 25 statements in one context and could see its earlier answers, which may make
+  it more consistent or anchor it on its first readings; a local model reads each statement
+  alone.
 - **The reference had a verifier.** The Claude readers checked their own spans by script and
   corrected them before handing in, which a single-pass local model cannot do; the repair loop
   below gives the local model the same step.
@@ -860,6 +864,40 @@ claude-opus-5-5 --repairs 1`):
 
 The repair loop is kept as a measured procedure, not adopted: it fixes 11 of 28 spans for about
 10% more time.
+
+**Evidence by sentence number: schema v2, prompt v3 (2026-11-06).** The statement is shown as
+numbered sentences (`split_sentences`, splitter version 1, the FinBERT splitter; median 14
+sentences per statement) and each evidence is a sentence number (`StatementExtractionV2`). The
+schema sent with each request (`schema_v2_for(n)`) allows only the numbers 1..n, so the
+server's grammar makes a citation that is not in the text impossible. The values and their
+definitions are v1's; `to_spans` turns a v2 answer back into v1 form so that every metric
+applies unchanged. Phi-4, 65 statements (`just extract-local --numbered`):
+
+| Phi-4 | Copy (v1, single pass) | Repair loop | Sentence number (v2) |
+|---|---|---|---|
+| Non-verbatim evidence | 28 / 403 | 17 / 402 | 0 / 399 (by construction) |
+| Median latency; output tokens | 8.2 s; 365 | 9.1 s; 396 | 5.0 s; 190 |
+| κ forward guidance vs Claude | 0.84 | 0.84 | **0.30** |
+| κ inflation / labour / growth / balance sheet | 0.80 / 0.85 / 0.71 / 0.88 | 0.80 / 0.85 / 0.71 / 0.87 | 0.81 / 0.82 / 0.66 / 0.82 |
+| Tone: correlation, mean gap vs Claude | 0.91, +0.02 | 0.91, +0.02 | 0.88, +0.21 |
+
+**Finding: copying the words is part of the reading.** With numbers, 13 statements that the
+reference reads as an explicit commitment to low rates (−2, e.g. "exceptionally low levels of
+the federal funds rate for an extended period") get +1. Phi-4 cites the right sentence and
+gets its sign wrong. On S41 the cited sentence is the same in both runs, "The Committee expects
+to maintain an accommodative stance of monetary policy until these outcomes are achieved.":
+after copying it, the model writes −2; after writing its number, +1. The schema puts the
+evidence before the value, so in v1 the model writes the words of the sentence just before it
+judges them, a short chain of thought; a number gives it nothing to condition on. Removing the
+copy removed the hallucinations and part of the reading.
+
+Schema v2 is not adopted. The next variant keeps the copy and the guarantee: the evidence stays
+text, but the schema sent restricts it to the exact sentences of the statement (a string enum),
+so the model writes the words and cannot write other ones.
+
+**Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
+judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
+outside the sample, with the reference reading them blind as before.
 
 ### 6.7 Look-ahead tests (H3)
 
@@ -1015,3 +1053,5 @@ and the report.
 | 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
 | 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, AgenticEnv profile `research`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
 | 2026-11-06 | Repair loop added and measured (one turn, `fomc-repair-v1`): Phi-4 non-verbatim spans 28 → 17, 2 values moved | the reference had checked its own spans; the loop gives the local model the same step; kept as a measured procedure, not adopted (§6.6) |
+| 2026-11-06 | Schema v2 (evidence by sentence number) measured and not adopted | no hallucination and twice as fast, but forward guidance κ falls from 0.84 to 0.30: without copying the sentence the model misjudges it (§6.6) |
+| 2026-11-06 | The variant finally chosen will be confirmed outside the 65 | prompt v2, the repair loop and schema v2 were all judged on the same sample |
