@@ -32,11 +32,21 @@ header h1 { font-size: 16px; margin: 0 12px 0 0; }
 .codes button.done { border-color: var(--ok); color: var(--ok); }
 .codes button.noaudio { opacity: .4; }
 .codes button.cur { outline: 2px solid var(--accent); }
-main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+/* The page itself does not scroll: each column scrolls on its own, so the statement stays in
+   view while the form is scrolled. */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  padding: 16px; }
 section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 14px 16px; }
-#player { position: sticky; top: 0; background: var(--panel); padding-bottom: 8px; z-index: 1; }
+  padding: 0 16px 14px; min-height: 0; overflow-y: auto; }
+#formcol { padding-top: 14px; }
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 42fr) minmax(0, 58fr);
+    gap: 10px; padding: 10px; }
+}
+#player { position: sticky; top: 0; background: var(--panel); padding: 14px 0 8px; z-index: 1;
+  border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 #player audio { width: 100%; }
 .speed button { border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 13px; }
@@ -90,7 +100,7 @@ textarea { width: 100%; min-height: 50px; font: inherit; background: var(--panel
     </div>
     <div id="text"></div>
   </section>
-  <section>
+  <section id="formcol">
     <form id="form" onsubmit="return false"></form>
     <div class="bar"><button id="save" disabled>Enregistrer et suivant</button><span id="msg"></span></div>
   </section>
@@ -163,8 +173,11 @@ function complete() {
 }
 
 function render() {
+  // Redrawing the form empties it for a moment: keep the column where the labeller was.
+  const col = $("#formcol"), top = col.scrollTop;
   const form = $("#form"); form.innerHTML = "";
   if (!code) return;
+  requestAnimationFrame(() => { col.scrollTop = top; });
   for (const def of fields) form.appendChild(renderField(def));
   const notes = document.createElement("div"); notes.className = "field";
   notes.innerHTML = `<h3>Notes (facultatif)</h3><textarea></textarea>`;
@@ -202,6 +215,7 @@ async function openCode(c) {
   }
   const [, saved] = await api(`/api/labels/${pass}/${c}`);
   answer = saved ? { ...saved } : {};
+  $("#formcol").scrollTop = 0; text.parentElement.scrollTop = 0;
   render();
 }
 
