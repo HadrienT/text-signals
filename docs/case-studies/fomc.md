@@ -552,6 +552,12 @@ an open decision (§7).
      single chronological split leaves about 50 test statements and doubles the minimum
      detectable effect. To be specified, or dropped, before any score is joined to the outcome.
 ---
+   **Prompt v2** (`fomc-statement-prompt-v2`, 2026-11-06): v1's rules plus the JSON schema with
+   its field descriptions in the system message. `llama-server` turns `response_format` into a
+   grammar and does not show the schema to the model: an out-of-sample smoke test (28 January
+   2015) had 906 prompt tokens with or without the schema, and the model, not knowing the
+   evidence rule, produced an invalid output. v2 has about 3,500 prompt tokens. Changed before
+   any output on the evaluation sample existed; v1 was never run on it.
 
 ## 6. Method
 
@@ -709,10 +715,73 @@ shown under shuffled codes (S01–S60, P1–P5), with no date.
   form and writes `data/labels/fomc_statements_v1/<pass>/<code>.json`.
 - **Not seen by the labeller:** dates, URLs, market data and model outputs.
 
-**Metrics.** Per-field accuracy or MAE against the labels, on the 60 statements; Cohen's κ
-between the two passes of the labeller on the 15; rate of `evidence` spans that do not appear
-verbatim in the document (hallucination); share of model outputs that fail validation.
-Compare 2–3 local models on quality, latency and tokens per document.
+**Hand labelling stopped (2026-11-06), replaced by a reference reader.** After the five
+practice statements the maintainer judged the labelling too long to finish, and the practice
+review showed systematic misreadings that a non-specialist would need more training to avoid
+(the sign of "gradual increases", "empty" against 0). No label of the 60 exists and no model
+output on the sample had been seen when this was decided. The five practice labels stay in
+`data/labels/fomc_statements_v1/practice/` and are not used. In their place:
+
+- **Reference reader: Claude** (`claude-opus-5-5`, run from Claude Code on 2026-11-06). Claude
+  Code is not an API, so `extract.py blind-inputs` writes one file per statement with its text
+  only (no date, URL, document id or other model's output) plus the prompt; three independent
+  Claude sessions, each told to read only those files, fill one JSON per statement under the
+  same prompt (v2) and schema; `extract.py import` validates them and stores them as
+  `ExtractionRecord` (decoding and latency unknown, so null). The readers' own notes on the
+  fields they were unsure of are kept with the run.
+- **What the reference is not.** It is a second, stronger reader, not ground truth: agreement
+  with it measures consistency of reading, not correctness. Claude knows the history of the Fed
+  and may recognise a statement and its date despite rule 1; it is not reproducible to the
+  token. Two readers noted they had inferred the size of a rate move the text did not state
+  (S24, S25, S29, against S55 and S58 left empty), which is exactly this kind of knowledge.
+- **Checks that need no reader.** The decision and its size against the FRED federal funds
+  target (`DFEDTAR` to 15 Dec 2008, then `DFEDTARU`; the target on the day after the release
+  minus the last one before it); evidence spans not found verbatim (hallucination); outputs
+  that fail validation.
+
+**Metrics** (`text_signals.evaluation`, `sources/fomc/extract_eval.py`). For each field, the
+share of statements where the two readers agree on whether the text says anything (presence),
+and, where both filled it, exact agreement, agreement within one step, mean absolute gap and
+Cohen's κ (quadratic weights on the −2…+2 scales); correlation of the tone scores. Compare 2–3
+local models on these, on latency and on tokens per document.
+
+**First run (2026-11-06), Qwen3-Coder-30B-A3B-Instruct (Q4_K_M, `llama-server`, prompt v2)
+against the Claude reference, 65 statements** (`just extract-local`, then `just extract-eval
+Qwen3-Coder-30B-A3B-Instruct claude-opus-5-5`; CSVs in `data/processed/fomc/extraction_eval_*.csv`). This run is on the evaluation sample only; no
+score has been joined to market data.
+
+| | Qwen3-Coder-30B | Claude (reference) |
+|---|---|---|
+| Outputs failing validation | 2 / 65 (a non-rate statement given a value without evidence) | 0 / 65 |
+| Decision direction vs FRED | 63 / 63 | 65 / 65 |
+| Decision size vs FRED | 61 / 63 | 61 / 65 (4 left empty: size not in the text) |
+| Evidence not verbatim | 19 / 405 spans | 0 / 379 |
+| Latency, tokens (median) | 3.6 s; 3,264 in, 376 out | – |
+
+| Field | Same presence | Exact (both filled) | Within 1 | κ (quadratic) |
+|---|---|---|---|---|
+| forward_guidance | 79% (Qwen fills 13 Claude leaves empty) | 79% | 96% | 0.89 |
+| inflation_assessment | 100% | 81% | 96% | 0.87 |
+| labor_market_assessment | 95% | 50% | 92% | 0.74 |
+| growth_assessment | 95% | 58% | 91% | 0.70 |
+| balance_sheet | 100% | 59% | 68% | 0.07 |
+| risk_balance | 75% (Qwen fills 16 Claude leaves empty) | 98% | – | 0.96 (unweighted) |
+
+Tone score correlation 0.86 on 60 statements; Qwen is 0.20 more hawkish on average.
+
+Findings, read from the outputs:
+
+- **Balance sheet: Qwen inverts the sign of new purchases.** It gives +2 to "will increase its
+  holdings of Treasury securities by at least $500 billion" (S19) and to the 2009 purchase
+  programme (S12), where the schema says −2. 8 of the 14 disagreements are this inversion. The
+  field enters `llm_tone`, so with this model the primary score would be wrong in the QE years.
+- **The non-verbatim spans are stitched, not invented.** Qwen joins real fragments with "..."
+  or across sentences (e.g. S38: 34 of 56 words match, then "... household spending"). They
+  still fail the verbatim rule and are counted.
+- **Size of a move the text does not state.** When a statement gives only the new range (S19,
+  March 2020, −100 bp), Qwen guessed −25 and Claude left it empty; on S24 (+50 bp) Qwen said +25
+  and Claude +50, which the text does not say (see the contamination note above).
+- Prompt v2 is the one used; the change from v1 is in §5.2.
 
 ### 6.7 Look-ahead tests (H3)
 
@@ -754,7 +823,8 @@ Fixed before seeing any regression output, and dated here when fixed:
 | LLM extraction schema `fomc-statement-v1` | fixed 2026-11-06 (§5.2) |
 | LLM aggregate scores: `llm_tone` (primary), `llm_guidance` (secondary), `d_llm_tone` (H2) | fixed 2026-11-06 (§5.2) |
 | Learned field weights in the expanding window | deferred; to specify or drop before scoring meets the outcome (§5.2) |
-| Hand-labelling guide | week 2, before labelling |
+| Hand-labelling guide | dropped 2026-11-06: hand labels replaced by a reference reader (§6.6) |
+| Prompt `fomc-statement-prompt-v2` (schema in the system message) | fixed 2026-11-06 (§5.2) |
 
 If anything changes after results are known, the change and its reason go into the decision log
 and the report.
@@ -862,3 +932,6 @@ and the report.
 | 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
 | 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
 | 2026-11-06 | Labelling sample v1 drawn (60 + 5 practice, 15 second pass), labeller listens with an audio aid | stratified by decade and regime; the maintainer is not a specialist, so definitions, practice and a consistency check carry the quality |
+| 2026-11-06 | Prompt v2: the schema and its definitions go into the system message | `llama-server` uses the schema as a grammar only, so v1 never showed the model the definitions (§5.2) |
+| 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for the maintainer; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
+| 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
