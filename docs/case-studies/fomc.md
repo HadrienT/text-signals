@@ -764,6 +764,30 @@ robustness`, same 243 statements and regressors; every check fixed in advance ab
 The estimate to report is the primary one, 1.03 bp per SD (bootstrap 95% interval 0.36 to 1.77),
 with Huber's 0.73 as the lower robust figure.
 
+**Secondary tests: the list and the Holm family (made precise 2026-11-06, before any of them
+was run).** Each is the primary regression with one change, and tests the coefficient named;
+HAC lags follow the same rule for each sample size. The 14 tests form one Holm family:
+
+1. LLM score alone (with MP1, without the baselines): `llm_tone`.
+2. LM score alone (with MP1): `lm_net_negative`.
+3. FinBERT score alone (with MP1): `finbert_net_negative`.
+4. H2: `d_llm_tone` (change from the previous statement's score, all statements in release
+   order) in place of `llm_tone`, other regressors unchanged.
+5. Outcome: 30-minute 10-year yield change (`d_UST10Y_30m_bp`).
+6. Outcome: 30-minute 2s10s slope change (`d_slope_2s10s_30m_bp`).
+7. Robustness outcome: daily ΔDGS2 (`d_DGS2_bp`).
+8. Robustness control: ΔDGS3MO (`d_DGS3MO_bp`) in place of MP1.
+9. Subsample: statements released from 1 May 1999 (233).
+10. Subsample: scheduled meetings only (232).
+11. Subsample: statements released on a press conference day.
+12. Subsample: statements not released on a press conference day.
+13. Subsample: zero lower bound (`zlb`, 75).
+14. Subsample: not at the zero lower bound.
+
+The "together" model of "each score alone, then together" is the primary test itself; the
+nested comparison (LLM over LM and FinBERT) is reported as the incremental R² of adding
+`llm_tone` to MP1 and the two baselines, whose HAC Wald test is the primary test.
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
@@ -1294,3 +1318,4 @@ and the report.
 | 2026-11-06 | Primary test run once: β_LLM = 1.03 bp per score SD, HAC p = 0.004, T = 243 | the frozen specification, unchanged; diagnostics and robustness follow (§6.3) |
 | 2026-11-06 | Diagnostics: no collinearity, no residual autocorrelation, strong heteroskedasticity, fat tails | reported, not used to change the estimator; HAC is consistent under heteroskedasticity; influence and robustness checks follow (§6.3) |
 | 2026-11-06 | Robustness: HC3, block bootstrap, refit without 19 influential statements and Huber all keep β_LLM positive and significant (Huber 0.73 bp per SD) | the checks fixed in advance; no observation dropped from the primary estimate (§6.3) |
+| 2026-11-06 | Secondary tests listed (14) as one Holm family, before any was run | §6.3 named the kinds of test, not the exact list; fixing it first keeps the multiple-testing correction honest |
