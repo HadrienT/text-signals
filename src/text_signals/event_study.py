@@ -192,3 +192,95 @@ def qq_plot(residuals: np.ndarray, path: str, *, title: str, unit: str = "bp") -
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+
+
+@dataclass(frozen=True)
+class Robustness:
+    """The robustness checks of protocol §6.3 for one tested coefficient."""
+
+    name: str
+    n: int
+    beta: float  # OLS, all events
+    hac_p: float
+    hc3_se: float
+    hc3_p: float
+    bootstrap_se: float  # moving-block pairs bootstrap of β
+    bootstrap_ci: tuple[float, float]  # percentile 95%
+    bootstrap_block: int
+    bootstrap_reps: int
+    cook_threshold: float  # 4 / T
+    influential: list[int]  # row positions with Cook's distance above the threshold
+    beta_without_influential: float
+    hac_p_without_influential: float
+    huber_beta: float
+    huber_se: float
+    huber_p: float
+
+
+def block_bootstrap_beta(
+    y: np.ndarray, x: np.ndarray, column: int, *, block: int, reps: int, seed: int
+) -> np.ndarray:
+    """OLS β of ``column`` on resampled moving blocks of ``block`` consecutive events (pairs
+    bootstrap: each block keeps its events' outcome and regressors together, and the blocks
+    keep the short-range dependence that HAC allows for)."""
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    starts = np.arange(n - block + 1)
+    k = int(np.ceil(n / block))
+    out = np.empty(reps)
+    for r in range(reps):
+        idx = (rng.choice(starts, k)[:, None] + np.arange(block)[None, :]).ravel()[:n]
+        coef, *_ = np.linalg.lstsq(x[idx], y[idx], rcond=None)
+        out[r] = coef[column]
+    return out
+
+
+def robustness(
+    data: pd.DataFrame,
+    outcome: str,
+    regressors: Sequence[str],
+    tested: str,
+    *,
+    block: int = 4,
+    reps: int = 9_999,
+    seed: int = 0,
+) -> Robustness:
+    frame = data[[outcome, *regressors]].astype(float)
+    if frame.isna().any().any():
+        raise ValueError("missing values: select the sample before the robustness checks")
+    n = len(frame)
+    x = sm.add_constant(frame[list(regressors)])
+    y = frame[outcome]
+    ols = sm.OLS(y, x).fit()
+    hac = fit(data, outcome, regressors, [tested])
+    hc3 = ols.get_robustcov_results(cov_type="HC3")
+    j = list(x.columns).index(tested)
+
+    boots = block_bootstrap_beta(y.to_numpy(), x.to_numpy(), j, block=block, reps=reps, seed=seed)
+
+    cook = np.asarray(ols.get_influence().cooks_distance[0])
+    threshold = 4 / n
+    flagged = [int(i) for i in np.flatnonzero(cook > threshold)]
+    kept = data.iloc[[i for i in range(n) if i not in set(flagged)]]
+    without = fit(kept, outcome, regressors, [tested])
+
+    huber = sm.RLM(y, x, M=sm.robust.norms.HuberT()).fit()
+    return Robustness(
+        name=tested,
+        n=n,
+        beta=float(ols.params[tested]),
+        hac_p=hac.wald_p,
+        hc3_se=float(hc3.bse[j]),
+        hc3_p=float(hc3.pvalues[j]),
+        bootstrap_se=float(boots.std(ddof=1)),
+        bootstrap_ci=(float(np.quantile(boots, 0.025)), float(np.quantile(boots, 0.975))),
+        bootstrap_block=block,
+        bootstrap_reps=reps,
+        cook_threshold=threshold,
+        influential=flagged,
+        beta_without_influential=without.coefficients[tested].beta,
+        hac_p_without_influential=without.wald_p,
+        huber_beta=float(huber.params[tested]),
+        huber_se=float(huber.bse[tested]),
+        huber_p=float(huber.pvalues[tested]),
+    )

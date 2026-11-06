@@ -71,3 +71,26 @@ def test_qq_plot_writes_a_png(tmp_path) -> None:  # type: ignore[no-untyped-def]
     path = tmp_path / "qq.png"
     qq_plot(np.random.default_rng(0).normal(size=50), str(path), title="t")
     assert path.read_bytes()[:4] == b"\x89PNG"
+
+
+def test_robustness_agrees_on_clean_data_and_flags_an_outlier() -> None:
+    from text_signals.event_study import robustness
+
+    d = _data(0.5, n=300, seed=4)
+    d["y"] = d["y"] + np.where(d.index == 10, 60.0, 0.0)  # one large outlier
+    r = robustness(d, "y", ["score", "control"], "score", reps=499)
+    assert 10 in r.influential
+    assert r.cook_threshold == pytest.approx(4 / 300)
+    assert r.huber_beta == pytest.approx(0.5, abs=0.06)  # Huber resists the outlier
+    assert r.bootstrap_ci[0] < r.beta < r.bootstrap_ci[1]
+    assert r.hc3_p < 0.01 and r.huber_p < 0.01
+    assert r.bootstrap_reps == 499 and r.bootstrap_block == 4
+
+
+def test_block_bootstrap_keeps_blocks_of_consecutive_events() -> None:
+    from text_signals.event_study import block_bootstrap_beta
+
+    y = np.arange(20, dtype=float)
+    x = np.column_stack([np.ones(20), np.arange(20, dtype=float)])
+    b = block_bootstrap_beta(y, x, 1, block=4, reps=50, seed=0)
+    assert np.allclose(b, 1.0)  # an exact line stays exact under any resampling
