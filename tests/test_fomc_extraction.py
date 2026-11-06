@@ -106,3 +106,56 @@ def test_scores_are_missing_when_nothing_is_filled() -> None:
 
 def test_score_changes_skip_missing_scores() -> None:
     assert score_changes([0.5, None, 1.0, -0.5]) == [None, None, 0.5, -1.5]
+
+
+def test_schema_v2_restricts_every_evidence_to_the_sentence_numbers() -> None:
+    from text_signals.sources.fomc.extraction import schema_v2_for
+
+    schema = schema_v2_for(3)
+    found = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            props = node.get("properties")
+            if isinstance(props, dict) and "evidence" in props:
+                found.append(props["evidence"])
+            for v in node.values():
+                walk(v)
+
+    walk(schema)
+    assert len(found) == 8  # seven fields and the dissent
+    for ev in found:
+        options = ev.get("anyOf", [ev])
+        assert {"enum": [1, 2, 3]} in options or ev.get("enum") == [1, 2, 3]
+
+
+def test_to_spans_turns_numbers_back_into_sentences() -> None:
+    from text_signals.sources.fomc.extraction import (
+        StatementExtractionV2,
+        numbered,
+        to_spans,
+    )
+
+    sentences = ["The Committee decided to hold.", "Inflation remains elevated."]
+    assert (
+        numbered(sentences) == "[1] The Committee decided to hold.\n[2] Inflation remains elevated."
+    )
+    empty = {"value": None, "evidence": None}
+    v2 = StatementExtractionV2.model_validate(
+        {
+            "policy_action": {"value": "hold", "change_bp": 0, "evidence": 1},
+            "forward_guidance": empty,
+            "inflation_assessment": {"value": 1, "evidence": 2},
+            "labor_market_assessment": empty,
+            "growth_assessment": empty,
+            "balance_sheet": empty,
+            "risk_balance": empty,
+            "dissents": [],
+        }
+    )
+    v1 = to_spans(v2, sentences)
+    assert v1.inflation_assessment.evidence == "Inflation remains elevated."
+    assert v1.policy_action.evidence == "The Committee decided to hold."
+    assert v1.inflation_assessment.value == 1
+    with pytest.raises(IndexError):
+        to_spans(v2, sentences[:1])

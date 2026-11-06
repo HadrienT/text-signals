@@ -34,11 +34,12 @@ STATEMENT_V1 = Prompt(
 )
 
 
-def _schema_text() -> str:
+def _schema_text(version: int = 1) -> str:
     # Imported here so that prompts.py does not depend on the schema at import of llm.py.
-    from text_signals.sources.fomc.extraction import StatementExtraction
+    from text_signals.sources.fomc.extraction import StatementExtraction, StatementExtractionV2
 
-    return json.dumps(StatementExtraction.model_json_schema(), indent=1)
+    model = StatementExtraction if version == 1 else StatementExtractionV2
+    return json.dumps(model.model_json_schema(), indent=1)
 
 
 # v2 (2026-11-06): llama-server turns ``response_format`` into a grammar and does not show the
@@ -68,4 +69,32 @@ REPAIR_V1 = RepairPrompt(
         "without joining parts of different sentences. If no passage of the statement "
         "supports the value, set the value and its evidence to null. Change nothing else."
     ),
+)
+
+
+# v3 (2026-11-06), for schema v2: the statement comes as numbered sentences (sentence splitter
+# ``text_signals.encoders.split_sentences``, SPLITTER_VERSION "1": a change of splitter is a new
+# prompt version), and every evidence is a sentence number. Rules 1-3 and 5 are v1's; rule 4 now
+# asks for a number instead of a copy.
+STATEMENT_V3 = Prompt(
+    version="fomc-statement-prompt-v3",
+    system=(
+        "You read one statement of the Federal Open Market Committee (FOMC) and fill a JSON "
+        "form that describes it. The statement is given one sentence per line, each with its "
+        "number in brackets. Rules:\n"
+        "1. Use only the text of the statement. Do not use what you may know about the date, "
+        "the economy at the time, later events, or how markets reacted.\n"
+        "2. Every scale runs from -2 to +2. Positive means hawkish (pointing to higher policy "
+        "rates); negative means dovish (pointing to lower rates). Follow the definition given "
+        "for each field in the schema.\n"
+        "3. When the statement says nothing on a field, set its value and its evidence to null. "
+        "Do not guess.\n"
+        "4. For every value you give, put in 'evidence' the number of the one sentence that "
+        "supports it best.\n"
+        "5. Judge the statement as a whole as written, not single words: 'elevated' inflation "
+        "is a concern, while 'elevated' uncertainty is not about inflation."
+        "\n\nThe form is the JSON schema below. The description of each field is its "
+        "definition: follow it.\n\n" + _schema_text(2)
+    ),
+    user_template="Statement, one numbered sentence per line:\n\n{text}",
 )

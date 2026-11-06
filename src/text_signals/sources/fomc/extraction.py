@@ -246,3 +246,127 @@ def score_changes(scores: Sequence[float | None]) -> list[float | None]:
         if score is not None:
             previous = score
     return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Schema v2 (2026-11-06): evidence by sentence number instead of by copy (protocol §6.6).
+#
+# The statement is shown to the model as numbered sentences (``numbered``), and every evidence
+# is the number of one sentence. The values and their definitions are those of v1: only the way
+# of citing changes. A request sends ``schema_v2_for(n)``, in which each evidence may only be
+# one of 1..n, so the grammar of the server makes a citation that is not in the text impossible.
+# ``to_spans`` turns a v2 answer back into a v1 one, with each number replaced by its sentence,
+# so that every v1 metric applies unchanged.
+# ---------------------------------------------------------------------------------------------
+
+SCHEMA_VERSION_V2 = "fomc-statement-v2"
+
+_EVIDENCE_V2 = (
+    "The number of the sentence of the statement that supports the value. Null only when the "
+    "value is null."
+)
+
+
+class ForwardGuidanceN(ForwardGuidance):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class InflationAssessmentN(InflationAssessment):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class LaborMarketAssessmentN(LaborMarketAssessment):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class GrowthAssessmentN(GrowthAssessment):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class BalanceSheetN(BalanceSheet):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class RiskBalanceN(RiskBalance):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class PolicyActionN(PolicyAction):
+    evidence: int | None = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class DissentN(Dissent):
+    evidence: int = Field(description=_EVIDENCE_V2)  # type: ignore[assignment]
+
+
+class StatementExtractionV2(BaseModel):
+    """Schema v2: the fields of v1, each evidence a sentence number."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy_action: PolicyActionN
+    forward_guidance: ForwardGuidanceN
+    inflation_assessment: InflationAssessmentN
+    labor_market_assessment: LaborMarketAssessmentN
+    growth_assessment: GrowthAssessmentN
+    balance_sheet: BalanceSheetN
+    risk_balance: RiskBalanceN
+    dissents: list[DissentN] = Field(
+        description="Every member who voted against the policy action; empty if none."
+    )
+
+
+def numbered(sentences: Sequence[str]) -> str:
+    """The statement as the model sees it in v2: one ``[k] sentence`` per line, from 1."""
+    return "\n".join(f"[{k}] {s}" for k, s in enumerate(sentences, 1))
+
+
+def schema_v2_for(n_sentences: int) -> dict[str, object]:
+    """The v2 JSON schema with every evidence restricted to the numbers 1..``n_sentences``."""
+    schema = StatementExtractionV2.model_json_schema()
+    allowed = list(range(1, n_sentences + 1))
+
+    def restrict(node: object) -> None:
+        if isinstance(node, dict):
+            props = node.get("properties")
+            if isinstance(props, dict) and "evidence" in props:
+                ev = props["evidence"]
+                keep = {k: v for k, v in ev.items() if k in ("description", "title")}
+                nullable = "anyOf" in ev
+                props["evidence"] = keep | (
+                    {"anyOf": [{"enum": allowed}, {"type": "null"}]}
+                    if nullable
+                    else {"enum": allowed}
+                )
+            for value in node.values():
+                restrict(value)
+        elif isinstance(node, list):
+            for value in node:
+                restrict(value)
+
+    restrict(schema)
+    return schema
+
+
+def to_spans(extraction: StatementExtractionV2, sentences: Sequence[str]) -> StatementExtraction:
+    """The v1 form of a v2 answer: each sentence number replaced by its sentence.
+
+    Raises ``IndexError`` on a number outside 1..len(sentences), which the restricted schema
+    rules out.
+    """
+
+    def span(k: int | None) -> str | None:
+        if k is None:
+            return None
+        if not 1 <= k <= len(sentences):
+            raise IndexError(f"sentence {k} of {len(sentences)}")
+        return sentences[k - 1]
+
+    data = extraction.model_dump(mode="json")
+    for name, value in data.items():
+        if name == "dissents":
+            for d in value:
+                d["evidence"] = span(d["evidence"])
+        else:
+            value["evidence"] = span(value["evidence"])
+    return StatementExtraction.model_validate(data)
