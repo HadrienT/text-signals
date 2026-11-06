@@ -885,6 +885,22 @@ statements predicted, 2000 to 2026.
 - Shuffled event dates: the score should explain nothing.
 - Score of the previous meeting instead of the current one.
 
+**Details (made precise 2026-11-06, before either placebo was run).** Primary sample and
+regressors throughout.
+
+- **Shuffled dates (permutation test).** `llm_tone` is randomly permuted across the 243
+  statements while the outcome, MP1 and the baselines stay with their own statement; the primary
+  regression is refitted each time. 9,999 permutations, seed 20261106. The statistic is the HAC
+  t of β_LLM; the permutation p-value is the share of permutations with |t| at least the observed
+  one (counting the observed one). A score that only works with its own statement should leave
+  the shuffled t-statistics centred on zero.
+- **Previous statement's score.** `llm_tone` of the previous statement in release order (all
+  statements) replaces the current one. It was public before the release, so it should not
+  explain the 30-minute move. Because tone is persistent, the previous score is correlated with
+  the current one and can pick up its effect when the current one is left out; so the placebo is
+  run twice: (a) as listed, in place of the current score; (b) next to the current score, where
+  its coefficient should be near zero. The autocorrelation of `llm_tone` is reported with them.
+
 ### 6.6 Evaluation of the extraction
 
 **Hand-labelled set** (`sources/fomc/labelling.py`, drawn 2026-11-06, before any model output
@@ -1411,3 +1427,4 @@ and the report.
 | 2026-11-06 | Secondary tests run: 5 of 14 survive Holm; no effect on the daily ΔDGS2; much weaker on press conference days | reported in full; the conclusion rests on the primary test, limited to the 30-minute window (§6.3) |
 | 2026-11-06 | Out-of-sample test details fixed: full vs baseline vs zero, first forecast year 2000, yearly refits, Clark–West for the nested comparison | §6.4 left the start, the benchmark models and the test open; fixed before running |
 | 2026-11-06 | Out-of-sample: +2.1% R² over the baseline, Clark–West p = 0.003; gains in 2000–2008 and 2022, losses in most later years | reported with the yearly path, which limits the result to the period before routine press conferences (§6.4) |
+| 2026-11-06 | Placebo details fixed: 9,999 permutations of the score on the HAC t; previous score in place of and next to the current one | §6.5 left the test and the statistic open; a persistent score needs the second form to be a fair placebo |
