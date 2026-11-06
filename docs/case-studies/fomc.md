@@ -783,6 +783,33 @@ Findings, read from the outputs:
   and Claude +50, which the text does not say (see the contamination note above).
 - Prompt v2 is the one used; the change from v1 is in §5.2.
 
+**Second model (2026-11-06): Phi-4** (Microsoft, 14B, `microsoft/phi-4-gguf` @ `6edc2ef6`,
+`phi-4-Q8_0.gguf`, sha256 `f68df5d3…a110`, MIT licence). Chosen for a reading task in English
+only: its model card gives English as the intended language and a training-data cutoff of June
+2024, an official date, which the look-ahead tests need (§6.7); for Qwen3-30B-A3B-Instruct-2507
+only third-party listings give one (June 2025). Served by the AgenticEnv profile `research`
+(context 16,384), same prompt v2, same decoding.
+
+| | Qwen3-Coder-30B | Phi-4 | Claude (reference) |
+|---|---|---|---|
+| Outputs failing validation | 2 / 65 | 0 / 65 | 0 / 65 |
+| Decision direction vs FRED | 63 / 63 | 64 / 65 | 65 / 65 |
+| Decision size vs FRED | 61 / 63 | 59 / 65 | 61 / 65 |
+| Evidence not verbatim (all stitched fragments) | 19 / 405 | 28 / 403 | 0 / 379 |
+| Latency (median) | 3.6 s | 8.2 s | – |
+| κ against Claude: forward guidance | 0.89 | 0.84 | |
+| inflation | 0.87 | 0.80 | |
+| labour market | 0.74 | 0.85 | |
+| growth | 0.70 | 0.71 | |
+| balance sheet | 0.07 | 0.88 | |
+| Tone score: correlation with Claude, mean gap | 0.86, +0.20 | 0.91, +0.02 | |
+
+Phi-4 does not invert the balance-sheet sign and its tone score is the closest to the
+reference, with no average bias. Its weaknesses: more stitched evidence, and it leaves the
+decision empty on the FIMA repo facility statement (S16) instead of `no_rate_decision`; on the
+size of moves the text does not state it guesses, as Qwen does (S19, S24, S29). All 28
+non-verbatim spans start with at least four words found in the text.
+
 ### 6.7 Look-ahead tests (H3)
 
 - **Cutoff split.** Find each model's training cutoff (model card, or probing with dated
@@ -935,3 +962,4 @@ and the report.
 | 2026-11-06 | Prompt v2: the schema and its definitions go into the system message | `llama-server` uses the schema as a grammar only, so v1 never showed the model the definitions (§5.2) |
 | 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for the maintainer; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
 | 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
+| 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, AgenticEnv profile `research`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
