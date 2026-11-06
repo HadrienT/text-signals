@@ -321,10 +321,8 @@ def numbered(sentences: Sequence[str]) -> str:
     return "\n".join(f"[{k}] {s}" for k, s in enumerate(sentences, 1))
 
 
-def schema_v2_for(n_sentences: int) -> dict[str, object]:
-    """The v2 JSON schema with every evidence restricted to the numbers 1..``n_sentences``."""
-    schema = StatementExtractionV2.model_json_schema()
-    allowed = list(range(1, n_sentences + 1))
+def _restrict_evidence(schema: dict[str, object], allowed: list[object]) -> dict[str, object]:
+    """``schema`` with every ``evidence`` property limited to the values in ``allowed``."""
 
     def restrict(node: object) -> None:
         if isinstance(node, dict):
@@ -346,6 +344,25 @@ def schema_v2_for(n_sentences: int) -> dict[str, object]:
 
     restrict(schema)
     return schema
+
+
+def schema_v2_for(n_sentences: int) -> dict[str, object]:
+    """The v2 JSON schema with every evidence restricted to the numbers 1..``n_sentences``."""
+    return _restrict_evidence(
+        StatementExtractionV2.model_json_schema(), list(range(1, n_sentences + 1))
+    )
+
+
+def schema_v1_closed(sentences: Sequence[str]) -> dict[str, object]:
+    """The v1 JSON schema with every evidence restricted to one whole sentence of the statement.
+
+    The model still writes the words of the sentence it cites (which, before the value, guides
+    its reading), but the grammar lets it write only a sentence that is in the text: the
+    "closed list" variant of protocol §6.6. Duplicate sentences are listed once.
+    """
+    return _restrict_evidence(
+        StatementExtraction.model_json_schema(), list(dict.fromkeys(sentences))
+    )
 
 
 def to_spans(extraction: StatementExtractionV2, sentences: Sequence[str]) -> StatementExtraction:

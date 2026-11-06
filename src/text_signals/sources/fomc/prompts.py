@@ -98,3 +98,21 @@ STATEMENT_V3 = Prompt(
     ),
     user_template="Statement, one numbered sentence per line:\n\n{text}",
 )
+
+
+# v4 (2026-11-06), for schema v1 with a closed list of evidence (``schema_v1_closed``): the text
+# is shown as in v2, and the grammar lets the evidence be only one whole sentence of the
+# statement (sentence splitter version "1"). Rule 4 says so; the other rules and the schema in
+# the system message are v2's. The schema's evidence description still says "one sentence or
+# part of one": rule 4 narrows it, and the grammar enforces rule 4.
+STATEMENT_V4 = Prompt(
+    version="fomc-statement-prompt-v4",
+    system=STATEMENT_V2.system.replace(
+        "4. For every value you give, copy into 'evidence' the words of the statement that "
+        "support it, exactly as written: one sentence or part of one. Never paraphrase.",
+        "4. For every value you give, copy into 'evidence' the one whole sentence of the "
+        "statement that supports it best, exactly as written.",
+    ),
+    user_template=STATEMENT_V2.user_template,
+)
+assert STATEMENT_V4.system != STATEMENT_V2.system

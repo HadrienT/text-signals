@@ -159,3 +159,36 @@ def test_to_spans_turns_numbers_back_into_sentences() -> None:
     assert v1.inflation_assessment.value == 1
     with pytest.raises(IndexError):
         to_spans(v2, sentences[:1])
+
+
+def test_closed_schema_allows_only_whole_sentences_of_the_text() -> None:
+    from text_signals.sources.fomc.extraction import schema_v1_closed
+
+    sentences = [
+        "Inflation remains elevated.",
+        "The Committee’s target is 2 percent.",
+        "Inflation remains elevated.",
+    ]
+    schema = schema_v1_closed(sentences)
+    enums = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            props = node.get("properties")
+            if isinstance(props, dict) and "evidence" in props:
+                ev = props["evidence"]
+                enums.append(next(o["enum"] for o in ev.get("anyOf", [ev]) if "enum" in o))
+            for v in node.values():
+                walk(v)
+
+    walk(schema)
+    assert len(enums) == 8
+    assert all(e == sentences[:2] for e in enums)  # duplicates listed once
+
+
+def test_prompt_v4_asks_for_one_whole_sentence() -> None:
+    from text_signals.sources.fomc.prompts import STATEMENT_V2, STATEMENT_V4
+
+    assert "one whole sentence" in STATEMENT_V4.system
+    assert "part of one. Never paraphrase" not in STATEMENT_V4.system
+    assert STATEMENT_V4.user_template == STATEMENT_V2.user_template

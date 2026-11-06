@@ -41,13 +41,20 @@ from text_signals.sources.fomc.extraction import (
     StatementExtractionV2,
     evidence_problems,
     numbered,
+    schema_v1_closed,
     schema_v2_for,
 )
-from text_signals.sources.fomc.prompts import REPAIR_V1, STATEMENT_V2, STATEMENT_V3
+from text_signals.sources.fomc.prompts import (
+    REPAIR_V1,
+    STATEMENT_V2,
+    STATEMENT_V3,
+    STATEMENT_V4,
+)
 
 PROMPT = STATEMENT_V2
 REPAIR = REPAIR_V1
 PROMPT_V3 = STATEMENT_V3  # with schema v2: evidence by sentence number
+PROMPT_V4 = STATEMENT_V4  # with schema v1 and a closed list of sentences as evidence
 PLAN = Path("data/labels/fomc_statements_sample_v1.csv")
 STATEMENTS = Path("data/interim/fomc/statements.jsonl")
 OUT = Path("data/interim/fomc/extractions")
@@ -130,6 +137,49 @@ def run_local_numbered(
         model=model,
         prompt_version=PROMPT_V3.version,
         schema_version=SCHEMA_VERSION_V2,
+        cache_path=cache_path(model, out),
+        on_record=log,
+    )
+
+
+def run_local_closed(
+    base_url: str, docs: list[SampleDoc], out: Path = OUT
+) -> list[ExtractionRecord]:
+    """Schema v1, each evidence restricted by the grammar to one whole sentence of the text."""
+    client = LLMClient(base_url)
+    model, model_path = client.model_info()
+    decoding = Decoding()
+    sentences = {d.doc_id: split_sentences(d.text) for d in docs}
+
+    def run(doc_id: str, text: str) -> ExtractionRecord:
+        return client.extract(
+            doc_id=doc_id,
+            text=text,
+            prompt=PROMPT_V4,
+            schema=StatementExtraction,
+            schema_version=SCHEMA_VERSION,
+            decoding=decoding,
+            model=model,
+            model_path=model_path,
+            json_schema=schema_v1_closed(sentences[doc_id]),
+        )
+
+    started = time.monotonic()
+
+    def log(record: ExtractionRecord, cached: bool) -> None:
+        status = "ok" if record.error is None else "INVALID"
+        print(
+            f"{record.doc_id} {status}{' (cache)' if cached else ''} "
+            f"{record.latency_s or 0:.1f}s  [{time.monotonic() - started:.0f}s]",
+            flush=True,
+        )
+
+    return extract_all(
+        ((d.doc_id, d.text) for d in docs),
+        run,
+        model=model,
+        prompt_version=PROMPT_V4.version,
+        schema_version=SCHEMA_VERSION,
         cache_path=cache_path(model, out),
         on_record=log,
     )
@@ -255,6 +305,9 @@ def main() -> None:
     local.add_argument(
         "--numbered", action="store_true", help="schema v2: evidence by sentence number"
     )
+    local.add_argument(
+        "--closed", action="store_true", help="evidence limited to whole sentences of the text"
+    )
     blind = sub.add_parser("blind-inputs")
     blind.add_argument("directory", type=Path)
     imp = sub.add_parser("import")
@@ -265,6 +318,8 @@ def main() -> None:
     if args.cmd == "local":
         if args.numbered:
             records = run_local_numbered(args.base_url, docs)
+        elif args.closed:
+            records = run_local_closed(args.base_url, docs)
         else:
             records = run_local(args.base_url, docs, max_repairs=args.repairs)
     elif args.cmd == "blind-inputs":

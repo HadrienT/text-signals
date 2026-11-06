@@ -25,13 +25,14 @@ from typing import Any
 import pandas as pd
 
 from text_signals.encoders import split_sentences
-from text_signals.evaluation import FieldAgreement, field_agreement
+from text_signals.evaluation import FieldAgreement, compare_kappas, field_agreement
 from text_signals.fetch import Fetcher
 from text_signals.llm import ExtractionRecord, read_cache
 from text_signals.market import fetch_fred_series
 from text_signals.sources.fomc.extract import (
     PROMPT,
     PROMPT_V3,
+    PROMPT_V4,
     SampleDoc,
     cache_path,
     procedure,
@@ -91,7 +92,12 @@ def flat(extraction: StatementExtraction) -> dict[str, Any]:
 
 
 def load_reader(
-    model: str, docs: Sequence[SampleDoc], proc: str = "single-pass", *, numbered: bool = False
+    model: str,
+    docs: Sequence[SampleDoc],
+    proc: str = "single-pass",
+    *,
+    numbered: bool = False,
+    closed: bool = False,
 ) -> dict[str, ExtractionRecord]:
     """The records of one reader for the sample, with the current prompt, schema and procedure.
 
@@ -115,6 +121,16 @@ def load_reader(
         and r.schema_version == schema
         and r.procedure == proc
     }
+    if closed:
+        prompt = PROMPT_V4.version
+        out = {
+            r.doc_id: r
+            for r in cache.values()
+            if r.doc_id in wanted
+            and r.prompt_version == prompt
+            and r.schema_version == schema
+            and r.procedure == proc
+        }
     if numbered:
         for doc_id, r in out.items():
             if r.output is not None:
@@ -187,6 +203,7 @@ def report(
     *,
     repairs: int = 0,
     numbered: bool = False,
+    closed: bool = False,
 ) -> str:
     """``model`` is read with ``repairs`` repair turns (0: single pass); the reference, single."""
     docs = sample_docs()
@@ -206,10 +223,15 @@ def report(
         [(reference, "single-pass", False)] if reference else []
     )
     for name, proc, num in readers:
-        t = reader_table(load_reader(name, docs, proc, numbered=num), docs).merge(truth, on="code")
+        cl = closed and name == model
+        t = reader_table(load_reader(name, docs, proc, numbered=num, closed=cl), docs).merge(
+            truth, on="code"
+        )
         tables[name] = t
-        suffix = ("" if proc == "single-pass" else f"_repair{repairs}") + (
-            "_numbered" if num else ""
+        suffix = (
+            ("" if proc == "single-pass" else f"_repair{repairs}")
+            + ("_numbered" if num else "")
+            + ("_closed" if cl else "")
         )
         out = (
             data_dir / "processed" / "fomc" / f"extraction_eval_{cache_path(name).stem}{suffix}.csv"
@@ -231,7 +253,8 @@ def report(
             .sum()
         )
         lines += [
-            f"### {name} ({proc}{', evidence by sentence number' if num else ''})",
+            f"### {name} ({proc}{', evidence by sentence number' if num else ''}"
+            f"{', evidence from a closed list of sentences' if cl else ''})",
             "",
             f"- outputs: {len(t)} statements, {int((~t['valid']).sum())} failed validation",
             f"- decision vs FRED target: {hold_ok.sum()}/{len(decided)} right direction, "
@@ -287,14 +310,74 @@ def report(
     return "\n".join(lines)
 
 
+VARIANTS: dict[str, dict[str, Any]] = {  # name -> how load_reader finds it (protocol §6.6)
+    "copy": {},
+    "repair": {"proc": "repair-1:fomc-repair-v1"},
+    "numbered": {"numbered": True},
+    "closed": {"closed": True},
+}
+
+
+def variants_table(model: str, reference: str, baseline: str = "copy") -> str:
+    """κ against the reference for each variant of ``model``, with bootstrap intervals and the
+    interval of its difference from ``baseline``, over the sample statements."""
+    docs = sample_docs()
+    ref = reader_table(load_reader(reference, docs), docs).set_index("code")
+    tables = {}
+    for name, how in VARIANTS.items():
+        proc = str(how.get("proc", "single-pass"))
+        records = load_reader(
+            model, docs, proc, numbered=bool(how.get("numbered")), closed=bool(how.get("closed"))
+        )
+        if records:
+            tables[name] = reader_table(records, docs).set_index("code")
+    codes = list(ref.index)
+
+    def col(frame: pd.DataFrame, field: str) -> list[Any]:
+        return [None if pd.isna(v) else v for v in frame.loc[codes, field]]
+
+    lines = [
+        f"κ against {reference}, 95% bootstrap intervals (2,000 paired draws of the "
+        f"{len(codes)} statements); Δ is the variant minus `{baseline}`.",
+        "",
+        "| Field | " + " | ".join(tables) + " |",
+        "|---|" + "---|" * len(tables),
+    ]
+    for field in ORDINAL:
+        cells = []
+        for name, t in tables.items():
+            c = compare_kappas(
+                col(ref, field), col(t, field), col(tables[baseline], field), ordinal=True
+            )
+            cell = f"{c.kappa_x:.2f} [{c.ci_x[0]:.2f}, {c.ci_x[1]:.2f}]"
+            if name != baseline:
+                cell += f"; Δ [{c.ci_diff[0]:+.2f}, {c.ci_diff[1]:+.2f}]"
+            cells.append(cell)
+        lines.append(f"| {field} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model")
     parser.add_argument("reference", nargs="?")
     parser.add_argument("--repairs", type=int, default=0)
     parser.add_argument("--numbered", action="store_true", help="the model's schema v2 run")
+    parser.add_argument("--closed", action="store_true", help="the model's closed-list run")
+    parser.add_argument("--variants", action="store_true", help="κ of every variant, with CIs")
     args = parser.parse_args()
-    print(report(args.model, args.reference, repairs=args.repairs, numbered=args.numbered))
+    if args.variants:
+        print(variants_table(args.model, args.reference))
+        return
+    print(
+        report(
+            args.model,
+            args.reference,
+            repairs=args.repairs,
+            numbered=args.numbered,
+            closed=args.closed,
+        )
+    )
 
 
 if __name__ == "__main__":
