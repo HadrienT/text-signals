@@ -24,12 +24,14 @@ from typing import Any
 
 import pandas as pd
 
+from text_signals.encoders import split_sentences
 from text_signals.evaluation import FieldAgreement, field_agreement
 from text_signals.fetch import Fetcher
 from text_signals.llm import ExtractionRecord, read_cache
 from text_signals.market import fetch_fred_series
 from text_signals.sources.fomc.extract import (
     PROMPT,
+    PROMPT_V3,
     SampleDoc,
     cache_path,
     procedure,
@@ -37,9 +39,12 @@ from text_signals.sources.fomc.extract import (
 )
 from text_signals.sources.fomc.extraction import (
     SCHEMA_VERSION,
+    SCHEMA_VERSION_V2,
     STANCE_FIELDS,
     StatementExtraction,
+    StatementExtractionV2,
     evidence_not_in_text,
+    to_spans,
     tone_score,
 )
 
@@ -86,19 +91,37 @@ def flat(extraction: StatementExtraction) -> dict[str, Any]:
 
 
 def load_reader(
-    model: str, docs: Sequence[SampleDoc], proc: str = "single-pass"
+    model: str, docs: Sequence[SampleDoc], proc: str = "single-pass", *, numbered: bool = False
 ) -> dict[str, ExtractionRecord]:
-    """The records of one reader for the sample, with the current prompt, schema and procedure."""
+    """The records of one reader for the sample, with the current prompt, schema and procedure.
+
+    With ``numbered``, the schema v2 records (prompt v3), turned into v1 form by ``to_spans``.
+    """
     cache = read_cache(cache_path(model))
-    wanted = {d.doc_id for d in docs}
-    return {
+    wanted = {d.doc_id: d for d in docs}
+    prompt, schema = (
+        (PROMPT_V3.version, SCHEMA_VERSION_V2)
+        if numbered
+        else (
+            PROMPT.version,
+            SCHEMA_VERSION,
+        )
+    )
+    out = {
         r.doc_id: r
         for r in cache.values()
         if r.doc_id in wanted
-        and r.prompt_version == PROMPT.version
-        and r.schema_version == SCHEMA_VERSION
+        and r.prompt_version == prompt
+        and r.schema_version == schema
         and r.procedure == proc
     }
+    if numbered:
+        for doc_id, r in out.items():
+            if r.output is not None:
+                v2 = StatementExtractionV2.model_validate(r.output)
+                v1 = to_spans(v2, split_sentences(wanted[doc_id].text))
+                out[doc_id] = r.model_copy(update={"output": v1.model_dump(mode="json")})
+    return out
 
 
 def reader_table(records: dict[str, ExtractionRecord], docs: Sequence[SampleDoc]) -> pd.DataFrame:
@@ -158,7 +181,12 @@ def _num(x: float | None) -> str:
 
 
 def report(
-    model: str, reference: str | None, data_dir: Path = Path("data"), *, repairs: int = 0
+    model: str,
+    reference: str | None,
+    data_dir: Path = Path("data"),
+    *,
+    repairs: int = 0,
+    numbered: bool = False,
 ) -> str:
     """``model`` is read with ``repairs`` repair turns (0: single pass); the reference, single."""
     docs = sample_docs()
@@ -174,11 +202,15 @@ def report(
 
     lines: list[str] = []
     tables = {}
-    readers = [(model, procedure(repairs))] + ([(reference, "single-pass")] if reference else [])
-    for name, proc in readers:
-        t = reader_table(load_reader(name, docs, proc), docs).merge(truth, on="code")
+    readers = [(model, procedure(repairs), numbered)] + (
+        [(reference, "single-pass", False)] if reference else []
+    )
+    for name, proc, num in readers:
+        t = reader_table(load_reader(name, docs, proc, numbered=num), docs).merge(truth, on="code")
         tables[name] = t
-        suffix = "" if proc == "single-pass" else f"_repair{repairs}"
+        suffix = ("" if proc == "single-pass" else f"_repair{repairs}") + (
+            "_numbered" if num else ""
+        )
         out = (
             data_dir / "processed" / "fomc" / f"extraction_eval_{cache_path(name).stem}{suffix}.csv"
         )
@@ -199,7 +231,7 @@ def report(
             .sum()
         )
         lines += [
-            f"### {name} ({proc})",
+            f"### {name} ({proc}{', evidence by sentence number' if num else ''})",
             "",
             f"- outputs: {len(t)} statements, {int((~t['valid']).sum())} failed validation",
             f"- decision vs FRED target: {hold_ok.sum()}/{len(decided)} right direction, "
@@ -260,8 +292,9 @@ def main() -> None:
     parser.add_argument("model")
     parser.add_argument("reference", nargs="?")
     parser.add_argument("--repairs", type=int, default=0)
+    parser.add_argument("--numbered", action="store_true", help="the model's schema v2 run")
     args = parser.parse_args()
-    print(report(args.model, args.reference, repairs=args.repairs))
+    print(report(args.model, args.reference, repairs=args.repairs, numbered=args.numbered))
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
+from text_signals.encoders import split_sentences
 from text_signals.llm import (
     Decoding,
     ExtractionRecord,
@@ -35,13 +36,18 @@ from text_signals.llm import (
 )
 from text_signals.sources.fomc.extraction import (
     SCHEMA_VERSION,
+    SCHEMA_VERSION_V2,
     StatementExtraction,
+    StatementExtractionV2,
     evidence_problems,
+    numbered,
+    schema_v2_for,
 )
-from text_signals.sources.fomc.prompts import REPAIR_V1, STATEMENT_V2
+from text_signals.sources.fomc.prompts import REPAIR_V1, STATEMENT_V2, STATEMENT_V3
 
 PROMPT = STATEMENT_V2
 REPAIR = REPAIR_V1
+PROMPT_V3 = STATEMENT_V3  # with schema v2: evidence by sentence number
 PLAN = Path("data/labels/fomc_statements_sample_v1.csv")
 STATEMENTS = Path("data/interim/fomc/statements.jsonl")
 OUT = Path("data/interim/fomc/extractions")
@@ -81,6 +87,52 @@ def procedure(max_repairs: int) -> str:
 def cache_path(model: str, out: Path = OUT) -> Path:
     slug = "".join(c if c.isalnum() or c in "-._" else "_" for c in model)
     return out / f"{slug}.jsonl"
+
+
+def run_local_numbered(
+    base_url: str, docs: list[SampleDoc], out: Path = OUT
+) -> list[ExtractionRecord]:
+    """Schema v2: the statement as numbered sentences, each evidence a sentence number.
+
+    The text the model sees, and whose sha256 keys the cache, is ``numbered(sentences)``.
+    """
+    client = LLMClient(base_url)
+    model, model_path = client.model_info()
+    decoding = Decoding()
+    sentences = {d.doc_id: split_sentences(d.text) for d in docs}
+
+    def run(doc_id: str, text: str) -> ExtractionRecord:
+        return client.extract(
+            doc_id=doc_id,
+            text=text,
+            prompt=PROMPT_V3,
+            schema=StatementExtractionV2,
+            schema_version=SCHEMA_VERSION_V2,
+            decoding=decoding,
+            model=model,
+            model_path=model_path,
+            json_schema=schema_v2_for(len(sentences[doc_id])),
+        )
+
+    started = time.monotonic()
+
+    def log(record: ExtractionRecord, cached: bool) -> None:
+        status = "ok" if record.error is None else "INVALID"
+        print(
+            f"{record.doc_id} {status}{' (cache)' if cached else ''} "
+            f"{record.latency_s or 0:.1f}s  [{time.monotonic() - started:.0f}s]",
+            flush=True,
+        )
+
+    return extract_all(
+        ((d.doc_id, numbered(sentences[d.doc_id])) for d in docs),
+        run,
+        model=model,
+        prompt_version=PROMPT_V3.version,
+        schema_version=SCHEMA_VERSION_V2,
+        cache_path=cache_path(model, out),
+        on_record=log,
+    )
 
 
 def run_local(
@@ -200,6 +252,9 @@ def main() -> None:
     local.add_argument(
         "--repairs", type=int, default=0, help="repair turns when the verifier finds a problem"
     )
+    local.add_argument(
+        "--numbered", action="store_true", help="schema v2: evidence by sentence number"
+    )
     blind = sub.add_parser("blind-inputs")
     blind.add_argument("directory", type=Path)
     imp = sub.add_parser("import")
@@ -208,7 +263,10 @@ def main() -> None:
     args = parser.parse_args()
     docs = sample_docs()
     if args.cmd == "local":
-        records = run_local(args.base_url, docs, max_repairs=args.repairs)
+        if args.numbered:
+            records = run_local_numbered(args.base_url, docs)
+        else:
+            records = run_local(args.base_url, docs, max_repairs=args.repairs)
     elif args.cmd == "blind-inputs":
         write_blind_inputs(docs, args.directory)
         print(f"{len(docs)} statements written to {args.directory}")
