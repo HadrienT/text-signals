@@ -891,9 +891,43 @@ evidence before the value, so in v1 the model writes the words of the sentence j
 judges them, a short chain of thought; a number gives it nothing to condition on. Removing the
 copy removed the hallucinations and part of the reading.
 
-Schema v2 is not adopted. The next variant keeps the copy and the guarantee: the evidence stays
-text, but the schema sent restricts it to the exact sentences of the statement (a string enum),
-so the model writes the words and cannot write other ones.
+Schema v2 is not adopted.
+
+**Closed list of sentences: schema v1, prompt v4 (2026-11-06).** This variant keeps the copy and
+the guarantee: the evidence stays text, but the schema sent with each request
+(`schema_v1_closed`) restricts it to the whole sentences of the statement (a string enum), so the
+model writes the words and cannot write other ones. Prompt v4 is v2 with rule 4 changed to "copy
+… the one whole sentence of the statement that supports it best" (`just extract-local
+--closed`). Phi-4, 65 statements: 0 of 406 spans not verbatim, all 65 decisions in the right
+direction (the FIMA facility statement now `no_rate_decision`), 9.0 s median, tone correlation
+0.88 with the reference and mean gap +0.01.
+
+All four variants, κ against the reference with 95% percentile bootstrap intervals (2,000 paired
+resamples of the 65 statements; Δ is the paired interval of the difference from `copy`;
+`compare_kappas`, `just extract-eval phi-4 claude-opus-5-5 --variants`):
+
+| Field | copy (v1) | repair loop | sentence number | closed list |
+|---|---|---|---|---|
+| forward_guidance | 0.84 [0.71, 0.93] | 0.84; Δ [0.00, 0.00] | 0.30; Δ [−0.73, −0.33] | 0.73; Δ [−0.23, −0.02] |
+| inflation | 0.80 [0.68, 0.90] | 0.80; Δ [0.00, 0.00] | 0.81; Δ [−0.14, +0.15] | 0.85; Δ [−0.01, +0.14] |
+| labour market | 0.85 [0.77, 0.91] | 0.85; Δ [0.00, 0.00] | 0.82; Δ [−0.11, +0.04] | 0.84; Δ [−0.05, +0.03] |
+| growth | 0.71 [0.54, 0.84] | 0.71; Δ [0.00, 0.00] | 0.66; Δ [−0.15, +0.02] | 0.71; Δ [−0.10, +0.10] |
+| balance sheet | 0.88 [0.80, 0.94] | 0.87; Δ [−0.05, 0.00] | 0.82; Δ [−0.16, +0.02] | 0.72; Δ [−0.38, −0.02] |
+| Non-verbatim spans | 28 / 403 | 17 / 402 | 0 (by construction) | 0 (by construction) |
+
+Reading of the table:
+
+- **Free copy reads best.** On forward guidance and the balance sheet, the closed list is worse
+  than free copy, and the paired interval of the difference excludes zero, if only just. On the
+  other three fields no variant differs from free copy beyond noise. With 65 statements the
+  intervals are wide: a κ of 0.84 is compatible with 0.71 to 0.93.
+- **The closed list softens rather than flips.** Its forward-guidance errors are mostly −1 where
+  the reference says −2 (10 statements), not sign errors as with sentence numbers. A likely
+  cause, not tested: forced to cite one whole sentence, the model can no longer quote the few
+  words that carry the commitment, nor join two sentences; part of what was counted as
+  stitching was the model combining evidence across sentences.
+- **No variant gives both.** Free copy gives the best reading with a few non-verbatim spans; the
+  constrained variants guarantee the spans and lose some reading.
 
 **Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
 judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
@@ -1055,3 +1089,4 @@ and the report.
 | 2026-11-06 | Repair loop added and measured (one turn, `fomc-repair-v1`): Phi-4 non-verbatim spans 28 → 17, 2 values moved | the reference had checked its own spans; the loop gives the local model the same step; kept as a measured procedure, not adopted (§6.6) |
 | 2026-11-06 | Schema v2 (evidence by sentence number) measured and not adopted | no hallucination and twice as fast, but forward guidance κ falls from 0.84 to 0.30: without copying the sentence the model misjudges it (§6.6) |
 | 2026-11-06 | The variant finally chosen will be confirmed outside the 65 | prompt v2, the repair loop and schema v2 were all judged on the same sample |
+| 2026-11-06 | Closed-list variant (evidence restricted to whole sentences, prompt v4) measured | 0 non-verbatim spans, but forward guidance and balance sheet κ below free copy (paired bootstrap interval of the difference excludes 0); variant choice left to the maintainer (§6.6) |
