@@ -605,7 +605,12 @@ Fixed before any regression was run (§7).
   Δy_i = α + β·score_i + γ·MP1_i + δ'·baselines_i + ε_i
 
 Δy_i is the 30-minute change in the 2-year yield (USMPD `UST2Y`, in bp). The baselines are the
-LM and encoder scores.
+LM and encoder scores: precisely, the two tone scores `lm_net_negative` and
+`finbert_net_negative`, which measure the same thing as the LLM score with the opposite sign
+(made precise on 2026-11-06, before the scores were joined to market data: §5.2 defines two LM
+scores, and `lm_uncertainty` measures uncertainty, not tone, so it is not a control of the
+primary test). The aggregate LLM score of the primary test is `llm_tone` from Phi-4
+(`data/processed/fomc/llm_scores_phi-4.csv`, §6.6).
 
 **Primary test (one, fixed in advance).** The test is H0: β_LLM = 0 against a two-sided
 alternative. It uses the 30-minute 2-year yield change, the aggregate LLM score, MP1 and the
@@ -1189,3 +1194,4 @@ and the report.
 | 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
 | 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
 | 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |
+| 2026-11-06 | Baselines of the primary test made precise: `lm_net_negative` and `finbert_net_negative`; the LLM score is Phi-4's `llm_tone` | "the LM and encoder scores" left two LM scores; uncertainty is not tone; settled before any join with market data (§6.3) |
