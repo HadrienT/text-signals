@@ -995,6 +995,17 @@ C07 and C28 also show the size problem again: the text gives only the new range 
 raise; Phi-4 writes +25, Claude leaves it empty. `change_bp` is a quality check only (§5.2) and
 stays so.
 
+**Procedure revised after the confirmation (2026-11-06, by the maintainer): the values come from
+the first answer.** One run with the repair loop gives both: the **values** that enter the
+scores are read from the first answer (`--first`; identical to a single pass), and the
+**repaired answer is kept for the audit of the evidence only** (6 non-verbatim spans left on 183
+instead of 17, with `problems_left` naming them). The repair never changes a score. The reason:
+the regression uses the values, and on the 30 new statements the repair changed values (5,
+three forward-guidance readings dropped) and made one valid answer invalid, without a better
+reading. This is a change after a result was seen, made on the confirmation sample; it is not
+confirmed again on new statements. On the 30, the first answer had 0 failed outputs, tone
+correlation 0.86 with the reference, and forward guidance κ 0.62 with 90% presence agreement.
+
 **Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
 judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
 outside the sample, with the reference reading them blind as before.
@@ -1041,7 +1052,7 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Learned field weights in the expanding window | deferred; to specify or drop before scoring meets the outcome (§5.2) |
 | Hand-labelling guide | dropped 2026-11-06: hand labels replaced by a reference reader (§6.6) |
 | Prompt `fomc-statement-prompt-v2` (schema in the system message) | fixed 2026-11-06 (§5.2) |
-| Extraction procedure: Phi-4, prompt v2, schema v1, repair loop (1 turn) | chosen 2026-11-06; to confirm on 30 new statements (§6.6) |
+| Extraction procedure: Phi-4, prompt v2, schema v1; values from the first answer, repair loop (1 turn) for the evidence audit only | chosen 2026-11-06, confirmed on 30 new statements, revised after confirmation (values from the first answer) (§6.6) |
 
 If anything changes after results are known, the change and its reason go into the decision log
 and the report.
@@ -1161,3 +1172,4 @@ and the report.
 | 2026-11-06 | Claude replaces the local model only on checks that see no market data | the reference cannot judge itself and the regression must not choose the reader (§6.6) |
 | 2026-11-06 | Confirmation sample of 30 new statements and its pass criterion, fixed before the run | the procedure was chosen on the 65 (§6.6) |
 | 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
+| 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
