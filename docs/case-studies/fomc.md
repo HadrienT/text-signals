@@ -1365,6 +1365,38 @@ Reading:
   inside its training window. A model with an earlier cutoff, or a longer stretch of statements
   after this one, is what would separate reading from remembering.
 
+**Look-ahead-free reader: ChronoGPT (specified 2026-11-06, 23:40, before any statement was
+scored).** He, Lv, Manela and Wu (2025) publish one model per vintage τ = 31 December 1999, …,
+2024, each trained only on text dated before τ (`manelalab/chrono-gpt-instruct-v1-<τ>`, MIT,
+≈ 1.55 B parameters, context 1,792 tokens). A statement released in year Y is read by the vintage
+of Y − 1 (statements of 2025 and 2026 by the 2024 vintage), so no statement is read by a model
+that has seen what followed it. Statements before 2000 have no such model and are left out.
+
+- **What was tried first, and failed.** Asked directly (in the models' own instruction format)
+  whether a sentence points to higher or lower rates, or is hawkish or dovish, the 1999 and 2024
+  vintages give the same answer to an invented rate hike and an invented rate cut ("Lower";
+  "neutral"; "Raising"). As an instruction follower, ChronoGPT cannot do this task.
+- **Score used: likelihood of the next word.** For each sentence of a statement (the FinBERT
+  splitter), the model reads "<sentence> As a result, short-term interest rates are likely to"
+  and the score is log P(" rise") − log P(" fall") at the next token. On invented sentences the
+  ordering is mostly right (hike above cut, hawkish guidance above dovish guidance) but the
+  signal is weak and every vintage has its own offset. The offset is removed with five fixed
+  content-free anchor sentences (procedural wording, the same for every vintage): a sentence's
+  score is its log-odds minus the vintage's mean on the anchors; a statement's `chrono_tone` is
+  the mean over its sentences (hawkish positive). CPU, float32 (`text_signals/chrono_gpt.py`, the
+  authors' forward pass copied, weights loaded with `weights_only`); the repository revision and
+  the weights' sha256 of every vintage are recorded.
+- **Validity criterion, fixed now.** The reader is judged on the statements of the evaluation
+  and confirmation samples released from 2000: if the correlation between `chrono_tone` and the
+  Claude reference's tone score is below 0.30, the reader is declared too weak to read the
+  statements, and its regression is reported but not interpreted. The correlation with Phi-4's
+  `llm_tone` over all scored statements is reported with it.
+- **Regression.** The primary regression with `chrono_tone` in place of `llm_tone`, on the
+  statements from 2000; Phi-4's β on the same statements alongside, and both scores together.
+  If the reader is valid and its β is positive and significant, look-ahead does not explain the
+  primary result; if the reader is valid and β is null, that is evidence that it may. Not part
+  of the Holm family.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1451,6 +1483,8 @@ and the report.
   Market Effects of FOMC Communication: Evidence from a New Event-Study Database. *Federal
   Reserve Bank of San Francisco Working Paper* 2025-30, doi:10.24148/wp2025-30. Database:
   `https://sffed.us/usmpd`.
+- He, S., Lv, L., Manela, A. and Wu, J. (2025). Chronologically Consistent Large Language
+  Models. arXiv:2502.21206. Models `manelalab/chrono-gpt-instruct-v1-<vintage>` on Hugging Face.
 - Clark, T. E. and West, K. D. (2007). Approximately Normal Tests for Equal Predictive
   Accuracy in Nested Models. *Journal of Econometrics* 138(1), 291–311,
   doi:10.1016/j.jeconom.2006.05.023.
@@ -1535,3 +1569,4 @@ and the report.
 | 2026-11-06 | Placebos: permutation p = 0.005 and the previous score alone has no effect; next to the current score the previous one is negative (p = 0.034), against the placebo's expectation | reported as a failed expectation; read after the fact as the market pricing the change in tone (§6.5) |
 | 2026-11-06 | Look-ahead tests specified: cutoff interaction (19 statements after, low power stated in advance), anonymisation rule and rescoring, dating probe | §6.7 left the statistics and the anonymisation rule open; fixed before running |
 | 2026-11-06 | Look-ahead: anonymisation barely moves the scores (r = 0.96, β 0.85 vs 0.97 bp per SD); Phi-4 dates pre-cutoff statements within about a year but not post-cutoff ones; no detectable effect after the cutoff (19 statements) | H3 left open and stated as such: the primary result holds for a model that knows the period (§6.7) |
+| 2026-11-06 | Look-ahead-free reader: ChronoGPT vintage Y − 1 for each statement of year Y, next-word likelihood score with anchor calibration, validity bar r ≥ 0.30 with the reference, all fixed before scoring | the instruction-following use failed on invented sentences; the GPU is unavailable after midnight, so the run is on CPU (§6.7) |
