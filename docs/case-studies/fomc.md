@@ -901,6 +901,29 @@ regressors throughout.
   run twice: (a) as listed, in place of the current score; (b) next to the current score, where
   its coefficient should be near zero. The autocorrelation of `llm_tone` is reported with them.
 
+**Placebo results (2026-11-06).** `python -m text_signals.sources.fomc.study placebos`.
+
+| Placebo | Result | Expected | Met |
+|---|---|---|---|
+| Score shuffled across statements (9,999 permutations) | shuffled HAC t: mean −0.00, SD 1.03; observed t 2.85; permutation p = **0.005** | shuffled t centred on 0, observed t in the tail | yes |
+| (a) Previous statement's score in place of the current one | +0.26 bp per SD, p = 0.40 (n = 246) | no effect | yes |
+| (b) Previous score next to the current one | previous **−1.04** bp per SD, p = 0.034; current **+1.89** bp per SD, p = 0.001 | previous near 0 | **no** |
+
+`llm_tone` is persistent: its first-order autocorrelation over all statements is 0.77.
+
+- **The score works only with its own statement.** Attached to a random statement it explains
+  nothing (shuffled t-statistics are centred on zero with unit spread), and the observed
+  t-statistic is beyond 99.5% of them, which agrees with the HAC p-value without relying on its
+  asymptotics.
+- **The previous score alone explains nothing**, as a public, already-known score should not.
+- **Next to the current score, the previous one is negative, not zero.** This is not what the
+  placebo expected. The two coefficients have opposite signs, the current one larger: the 2-year
+  moves with the new tone *net of the tone already known*, as it would with a surprise measured
+  against expectations. That reading is formed after seeing the result and is not tested here;
+  it points the same way as H2 (the change in tone, +0.85 bp per SD, not significant after
+  Holm). The primary estimate stays the pre-registered one; the placebo shows that the level of
+  the score partly stands for its change.
+
 ### 6.6 Evaluation of the extraction
 
 **Hand-labelled set** (`sources/fomc/labelling.py`, drawn 2026-11-06, before any model output
@@ -1428,3 +1451,4 @@ and the report.
 | 2026-11-06 | Out-of-sample test details fixed: full vs baseline vs zero, first forecast year 2000, yearly refits, Clark–West for the nested comparison | §6.4 left the start, the benchmark models and the test open; fixed before running |
 | 2026-11-06 | Out-of-sample: +2.1% R² over the baseline, Clark–West p = 0.003; gains in 2000–2008 and 2022, losses in most later years | reported with the yearly path, which limits the result to the period before routine press conferences (§6.4) |
 | 2026-11-06 | Placebo details fixed: 9,999 permutations of the score on the HAC t; previous score in place of and next to the current one | §6.5 left the test and the statistic open; a persistent score needs the second form to be a fair placebo |
+| 2026-11-06 | Placebos: permutation p = 0.005 and the previous score alone has no effect; next to the current score the previous one is negative (p = 0.034), against the placebo's expectation | reported as a failed expectation; read after the fact as the market pricing the change in tone (§6.5) |
