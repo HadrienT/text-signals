@@ -1310,6 +1310,61 @@ training cutoff June 2024 (taken as 30 June 2024, §5.2).
   guess on the statements after its cutoff. Low error means the model can place a text in time,
   so it could also bring knowledge of what followed; it does not by itself show that it did.
 
+**Look-ahead results (2026-11-06).** `python -m text_signals.sources.fomc.lookahead report`,
+after Phi-4 read the 250 anonymised statements (0 invalid) and answered the dating probe on all
+250 (0 invalid).
+
+*Cutoff split* (primary sample):
+
+| | n | β per SD (bp) | se per SD |
+|---|---|---|---|
+| Before 30 June 2024 | 224 | +1.13 | 0.37 |
+| After | 19 | −0.44 | 1.38 |
+| Interaction in the pooled regression | 243 | +0.48 | p = 0.66 |
+
+Out of sample, the LLM score loses against the baseline over the 19 statements after the cutoff
+(squared-error gain −27.7 bp²).
+
+*Anonymisation* (dates, years and member names removed; a median of 12 replacements per
+statement, from 0 to 19): the anonymised and original `llm_tone` correlate at 0.96, with no mean shift
+(+0.001); the score changes on 21% of statements. In the primary regression on the same 242
+statements, β is 0.85 bp per SD (p = 0.010) with the anonymised score against 0.97 (p = 0.006)
+with the original.
+
+*Dating probe* (year asked for each anonymised statement):
+
+| | Mean absolute error (years) | Within one year |
+|---|---|---|
+| Phi-4, all 250 | 2.62 | 81% (exact year 59%) |
+| Naive guess (median year) | 7.48 | 10% |
+| Phi-4, statements before the cutoff | 1.21 | – |
+| Phi-4, the 20 statements after the cutoff | 18.85 | – |
+
+By period before the cutoff, the error is 0.4 years from 2005 to 2019. After the cutoff the
+model answers 1994, 2006 or 2023: it never places a 2024–2026 statement after 2023.
+
+Reading:
+
+- **Phi-4 can place the statements it could have seen in time, precisely**, from the text alone
+  without dates or names. The statements after its cutoff it cannot place, and it puts them in
+  earlier years whose rate levels look alike (a 4 percent target in 2025 reads as 2006 or 1994).
+  So the model brings knowledge of the period: the condition for look-ahead is met. The probe
+  does not show that this knowledge entered the scores.
+- **Removing explicit dates and names barely changes the reading.** The scores move little and
+  β falls by about an eighth. But the anonymisation leaves the rate levels and the wording, which
+  are what the model dates from, so it cannot remove that knowledge without removing the policy
+  content itself.
+- **After the cutoff the effect is not detectable**: β per SD is −0.44 with a standard error of
+  1.38, the interaction test has no power (stated in advance), and the out-of-sample gain is
+  negative. This is what look-ahead would predict, and also what the decline since 2009 (§6.4,
+  press conferences) predicts without it; 19 statements cannot separate the two.
+- **H3 is not settled.** The evidence is that the reading does not lean on explicit dates, that
+  the model knows the period of every statement it scored before its cutoff, and that on the
+  only statements it could not have seen the effect does not show. The primary result is
+  therefore a result for a model with knowledge of the period, on a sample almost entirely
+  inside its training window. A model with an earlier cutoff, or a longer stretch of statements
+  after this one, is what would separate reading from remembering.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1479,3 +1534,4 @@ and the report.
 | 2026-11-06 | Placebo details fixed: 9,999 permutations of the score on the HAC t; previous score in place of and next to the current one | §6.5 left the test and the statistic open; a persistent score needs the second form to be a fair placebo |
 | 2026-11-06 | Placebos: permutation p = 0.005 and the previous score alone has no effect; next to the current score the previous one is negative (p = 0.034), against the placebo's expectation | reported as a failed expectation; read after the fact as the market pricing the change in tone (§6.5) |
 | 2026-11-06 | Look-ahead tests specified: cutoff interaction (19 statements after, low power stated in advance), anonymisation rule and rescoring, dating probe | §6.7 left the statistics and the anonymisation rule open; fixed before running |
+| 2026-11-06 | Look-ahead: anonymisation barely moves the scores (r = 0.96, β 0.85 vs 0.97 bp per SD); Phi-4 dates pre-cutoff statements within about a year but not post-cutoff ones; no detectable effect after the cutoff (19 statements) | H3 left open and stated as such: the primary result holds for a model that knows the period (§6.7) |
