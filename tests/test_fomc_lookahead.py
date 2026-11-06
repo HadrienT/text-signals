@@ -71,3 +71,32 @@ def test_cutoff_split_finds_a_change_in_the_effect() -> None:
     r = cutoff_split(table)
     assert r["n_after"] == 50 and r["interaction_p"] < 0.01
     assert r["beta_after_per_sd"] > r["beta_before_per_sd"] + 2
+
+
+def test_chrono_check_reports_validity_and_the_regression(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc import lookahead
+
+    rng = np.random.default_rng(10)
+    n = 150
+    tone = rng.normal(0, 1, n)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("2000-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": tone + rng.normal(0, 0.3, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = tone + rng.normal(0, 1, n)
+    chrono = pd.DataFrame({"doc_id": table["doc_id"], "chrono_tone": tone + rng.normal(0, 0.5, n)})
+    reference = pd.DataFrame({"doc_id": table["doc_id"][:60], "reference_tone": tone[:60]})
+    monkeypatch.setattr(lookahead, "reference_tone", lambda model="x": reference)
+    r = lookahead.chrono_check(table, chrono)
+    assert r["valid"] == 1.0 and r["r_with_reference"] > 0.8
+    assert r["chrono_p"] < 0.01 and r["n_regression"] == n

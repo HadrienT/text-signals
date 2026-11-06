@@ -254,9 +254,56 @@ def date_probe(table: pd.DataFrame) -> dict[str, float]:
     }
 
 
+CHRONO_SCORES = Path("data/processed/fomc/chrono_scores.csv")
+VALIDITY_BAR = 0.30  # protocol §6.7, fixed before scoring
+
+
+def reference_tone(model: str = "claude-opus-5-5") -> pd.DataFrame:
+    """The reference reader's tone score on the statements it read (65 + 30)."""
+    from text_signals.sources.fomc.extraction import StatementExtraction, tone_score
+
+    rows = []
+    for r in read_cache(cache_path(model)).values():
+        if r.output is not None:
+            tone = tone_score(StatementExtraction.model_validate(r.output))
+            rows.append({"doc_id": r.doc_id, "reference_tone": tone})
+    return pd.DataFrame(rows).drop_duplicates("doc_id")
+
+
+def chrono_check(table: pd.DataFrame, chrono: pd.DataFrame) -> dict[str, float]:
+    """Validity of the ChronoGPT reader, then the primary regression with its score (§6.7)."""
+    from text_signals.event_study import fit
+    from text_signals.sources.fomc import study
+
+    t = table.merge(chrono[["doc_id", "chrono_tone"]], on="doc_id", how="left")
+    ref = t.merge(reference_tone(), on="doc_id").dropna(subset=["chrono_tone", "reference_tone"])
+    r_ref = float(ref["chrono_tone"].corr(ref["reference_tone"]))
+    both = t.dropna(subset=["chrono_tone", "llm_tone"])
+    sample = study.primary_sample(t).dropna(subset=["chrono_tone"])
+    base = [study.CONTROL, *study.BASELINES]
+    chrono_fit = fit(sample, study.OUTCOME, ["chrono_tone", *base], ["chrono_tone"])
+    phi_fit = fit(sample, study.OUTCOME, [study.SCORE, *base], [study.SCORE])
+    joint = fit(sample, study.OUTCOME, ["chrono_tone", study.SCORE, *base], ["chrono_tone"])
+    return {
+        "n_reference": float(len(ref)),
+        "r_with_reference": r_ref,
+        "valid": float(r_ref >= VALIDITY_BAR),
+        "r_with_phi4_all": float(both["chrono_tone"].corr(both["llm_tone"])),
+        "n_regression": float(chrono_fit.n),
+        "chrono_per_sd": chrono_fit.coefficients["chrono_tone"].per_sd,
+        "chrono_p": chrono_fit.wald_p,
+        "phi4_same_sample_per_sd": phi_fit.coefficients[study.SCORE].per_sd,
+        "phi4_same_sample_p": phi_fit.wald_p,
+        "joint_chrono_per_sd": joint.coefficients["chrono_tone"].per_sd,
+        "joint_chrono_p": joint.wald_p,
+        "joint_phi4_per_sd": joint.coefficients[study.SCORE].per_sd,
+        "joint_phi4_p": float(joint.coefficients[study.SCORE].p),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["anonymised-run", "probe-run", "show", "report"])
+    parser.add_argument("cmd", choices=["anonymised-run", "probe-run", "show", "report", "chrono"])
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
     if args.cmd == "anonymised-run":
@@ -265,6 +312,12 @@ def main() -> None:
     elif args.cmd == "probe-run":
         records = run_probe(args.base_url)
         print(f"{len(records)} records, {sum(r.error is not None for r in records)} invalid")
+    elif args.cmd == "chrono":
+        from text_signals.sources.fomc import study
+
+        table = study.study_table(pd.read_csv(study.EVENTS), pd.read_csv(study.LLM_SCORES))
+        for k, v in chrono_check(table, pd.read_csv(CHRONO_SCORES)).items():
+            print(f"{k}: {v:.4f}")
     elif args.cmd == "report":
         from text_signals.sources.fomc import study
 
