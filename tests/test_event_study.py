@@ -134,3 +134,11 @@ def test_oos_r2_and_clark_west_reward_a_useful_regressor() -> None:
     assert oos_r2(y, full[keep], base[keep]) > 0.2
     t, p = clark_west(y, base[keep], full[keep])
     assert t > 3 and p < 0.01
+
+
+def test_cumulative_gain_plot_writes_a_png(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from text_signals.event_study import cumulative_gain_plot
+
+    path = tmp_path / "g.png"
+    cumulative_gain_plot([2000, 2001, 2002], [1.0, 3.0, 2.0], str(path), title="t", ylabel="y")
+    assert path.read_bytes()[:4] == b"\x89PNG"

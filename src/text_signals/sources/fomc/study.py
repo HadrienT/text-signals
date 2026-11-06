@@ -22,6 +22,7 @@ from text_signals.event_study import (
     EventRegression,
     Robustness,
     clark_west,
+    cumulative_gain_plot,
     diagnostics,
     expanding_forecasts,
     fit,
@@ -297,6 +298,16 @@ def main() -> None:
         for k, v in summary.items():
             print(f"{k}: {v:.4f}")
         print(by_year.round(1).to_string())
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        path = FIGURES / "fomc_oos_cumulative_gain.png"
+        cumulative_gain_plot(
+            list(by_year.index),
+            list(by_year["cum_gain"]),
+            str(path),
+            title="Out of sample: cumulative squared-error gain of adding the LLM score",
+            ylabel="Σ (base − full) squared errors, bp²",
+        )
+        print(f"figure -> {path}")
         return
     if sys.argv[1:] == ["secondary"]:
         sec = secondary_tests(table, press_conference_days())

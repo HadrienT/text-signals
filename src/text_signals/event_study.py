@@ -339,3 +339,41 @@ def clark_west(
     res = sm.OLS(f, np.ones(n)).fit(cov_type="HAC", cov_kwds={"maxlags": maxlags})
     t = float(res.tvalues[0])
     return t, float(1 - stats.norm.cdf(t))
+
+
+def cumulative_gain_plot(
+    years: Sequence[int], gain: Sequence[float], path: str, *, title: str, ylabel: str
+) -> None:
+    """Cumulative out-of-sample gain of one model over another (Goyal–Welch style): rising
+    where the model forecasts better, falling where it forecasts worse."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(6.4, 3.6), dpi=150)
+    fig.patch.set_facecolor("#fcfcfb")
+    ax.set_facecolor("#fcfcfb")
+    ax.axhline(0, color="#9a9893", linewidth=1.0, zorder=1)
+    ax.plot(
+        list(years),
+        list(gain),
+        color="#2a78d6",
+        linewidth=2,
+        marker="o",
+        markersize=4,
+        markeredgecolor="#fcfcfb",
+        markeredgewidth=0.8,
+        zorder=2,
+    )
+    ax.set_ylabel(ylabel, color="#52514e")
+    ax.set_title(title, color="#0b0b0b", fontsize=10, loc="left")
+    ax.grid(color="#e6e5e1", linewidth=0.6)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#c9c8c3")
+    ax.tick_params(colors="#52514e", labelsize=8)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)

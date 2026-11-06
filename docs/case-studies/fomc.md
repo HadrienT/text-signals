@@ -859,6 +859,27 @@ Reading, test by test, with the primary test as the only basis of the conclusion
   HAC with the same lag rule. Reported, not part of the Holm family; the conclusion stays with the
   primary test.
 
+**Out-of-sample result (2026-11-06).** `python -m text_signals.sources.fomc.study oos`: 225
+statements predicted, 2000 to 2026.
+
+| Comparison | R²_OOS |
+|---|---|
+| Full model vs zero forecast | +5.8% |
+| Baseline (MP1, LM, FinBERT) vs zero forecast | +3.8% |
+| **Full vs baseline (adding `llm_tone`)** | **+2.1%**; Clark–West t = 2.73, one-sided p = 0.003 |
+
+![Cumulative out-of-sample gain of adding the LLM score](figures/fomc_oos_cumulative_gain.png)
+
+- **Over the whole period, a relation estimated on past statements only still helps.** Adding
+  the LLM score lowers the out-of-sample squared error by 2.1% against the baseline, and the
+  Clark–West test rejects equal accuracy.
+- **The gain is not steady.** The cumulative gain rises from 2000 to 2008 (largest in 2003 and
+  2008) and again in 2022, and falls in most other years: from 2009 to 2021, and from 2023, the
+  full model forecasts slightly worse than the baseline. Most of these years have a press
+  conference after the statement (every meeting since 2019), where the secondary tests also
+  found a much weaker effect; the zero lower bound years are in the same stretch. On recent
+  years alone the LLM score would not have helped a forecaster.
+
 ### 6.5 Placebos
 
 - Shuffled event dates: the score should explain nothing.
@@ -1389,3 +1410,4 @@ and the report.
 | 2026-11-06 | Secondary tests listed (14) as one Holm family, before any was run | §6.3 named the kinds of test, not the exact list; fixing it first keeps the multiple-testing correction honest |
 | 2026-11-06 | Secondary tests run: 5 of 14 survive Holm; no effect on the daily ΔDGS2; much weaker on press conference days | reported in full; the conclusion rests on the primary test, limited to the 30-minute window (§6.3) |
 | 2026-11-06 | Out-of-sample test details fixed: full vs baseline vs zero, first forecast year 2000, yearly refits, Clark–West for the nested comparison | §6.4 left the start, the benchmark models and the test open; fixed before running |
+| 2026-11-06 | Out-of-sample: +2.1% R² over the baseline, Clark–West p = 0.003; gains in 2000–2008 and 2022, losses in most later years | reported with the yearly path, which limits the result to the period before routine press conferences (§6.4) |
