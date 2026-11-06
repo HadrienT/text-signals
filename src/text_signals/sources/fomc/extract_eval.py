@@ -98,6 +98,7 @@ def load_reader(
     *,
     numbered: bool = False,
     closed: bool = False,
+    first: bool = False,
 ) -> dict[str, ExtractionRecord]:
     """The records of one reader for the sample, with the current prompt, schema and procedure.
 
@@ -131,6 +132,16 @@ def load_reader(
             and r.schema_version == schema
             and r.procedure == proc
         }
+    if first:
+        # A repair run read at its first answer: what a single pass would have given (the first
+        # answer is byte-identical to a single pass at temperature 0, protocol §6.6).
+        for doc_id, r in out.items():
+            if r.rejected:
+                raw = r.rejected[0].raw_output
+                parsed = StatementExtraction.model_validate_json(raw).model_dump(mode="json")
+                out[doc_id] = r.model_copy(
+                    update={"output": parsed, "error": None, "raw_output": raw, "rejected": []}
+                )
     if numbered:
         for doc_id, r in out.items():
             if r.output is not None:
@@ -205,6 +216,7 @@ def report(
     numbered: bool = False,
     closed: bool = False,
     plan: Path | None = None,
+    first: bool = False,
 ) -> str:
     """``model`` is read with ``repairs`` repair turns (0: single pass); the reference, single."""
     docs = sample_docs(plan) if plan else sample_docs()
@@ -225,14 +237,16 @@ def report(
     )
     for name, proc, num in readers:
         cl = closed and name == model
-        t = reader_table(load_reader(name, docs, proc, numbered=num, closed=cl), docs).merge(
-            truth, on="code"
-        )
+        fa = first and name == model
+        records = load_reader(name, docs, proc, numbered=num, closed=cl, first=fa)
+        t = reader_table(records, docs).merge(truth, on="code")
         tables[name] = t
         suffix = (
-            ("" if proc == "single-pass" else f"_repair{repairs}")
+            ("" if plan is None else f"_{plan.stem}")
+            + ("" if proc == "single-pass" else f"_repair{repairs}")
             + ("_numbered" if num else "")
             + ("_closed" if cl else "")
+            + ("_first" if fa else "")
         )
         out = (
             data_dir / "processed" / "fomc" / f"extraction_eval_{cache_path(name).stem}{suffix}.csv"
@@ -367,6 +381,7 @@ def main() -> None:
     parser.add_argument("--closed", action="store_true", help="the model's closed-list run")
     parser.add_argument("--variants", action="store_true", help="κ of every variant, with CIs")
     parser.add_argument("--plan", type=Path, default=None, help="another sample than the 65")
+    parser.add_argument("--first", action="store_true", help="a repair run at its first answer")
     args = parser.parse_args()
     if args.variants:
         print(variants_table(args.model, args.reference))
@@ -379,6 +394,7 @@ def main() -> None:
             numbered=args.numbered,
             closed=args.closed,
             plan=args.plan,
+            first=args.first,
         )
     )
 
