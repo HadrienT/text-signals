@@ -56,6 +56,11 @@ REPAIR = REPAIR_V1
 PROMPT_V3 = STATEMENT_V3  # with schema v2: evidence by sentence number
 PROMPT_V4 = STATEMENT_V4  # with schema v1 and a closed list of sentences as evidence
 PLAN = Path("data/labels/fomc_statements_sample_v1.csv")
+CONFIRM_PLAN = Path("data/labels/fomc_confirm_sample_v1.csv")
+CONFIRM_VERSION = "fomc-confirm-sample-v1"
+CONFIRM_SEED = 20261107
+N_CONFIRM = 30
+EVENTS = Path("data/processed/fomc/statement_events.csv")
 STATEMENTS = Path("data/interim/fomc/statements.jsonl")
 OUT = Path("data/interim/fomc/extractions")
 
@@ -89,6 +94,29 @@ def sample_docs(plan: Path = PLAN, statements: Path = STATEMENTS) -> list[Sample
 
 def procedure(max_repairs: int) -> str:
     return "single-pass" if max_repairs == 0 else repair_procedure(max_repairs, REPAIR)
+
+
+def draw_confirmation(events: pd.DataFrame, used: set[str]) -> pd.DataFrame:
+    """The confirmation sample (protocol §6.6): ``N_CONFIRM`` statements of the main sample drawn
+    at random, without strata, from those not in the evaluation sample (``used``), under
+    shuffled codes C01, C02, ... Same columns as the labelling plan, ``role`` "confirm"."""
+    import random
+
+    pool = sorted(set(events.loc[events["in_main_sample"], "doc_id"]) - used)
+    rng = random.Random(CONFIRM_SEED)
+    chosen = rng.sample(pool, N_CONFIRM)
+    dates = events.set_index("doc_id")["release_date"]
+    return pd.DataFrame(
+        {
+            "code": [f"C{i:02d}" for i in range(1, N_CONFIRM + 1)],
+            "doc_id": chosen,
+            "release_date": [dates[d] for d in chosen],
+            "stratum": "",
+            "role": "confirm",
+            "second_pass": False,
+            "sample_version": CONFIRM_VERSION,
+        }
+    )
 
 
 def cache_path(model: str, out: Path = OUT) -> Path:
@@ -296,7 +324,9 @@ def import_reference(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan", type=Path, default=PLAN, help="which sample to run on")
     sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("draw-confirm")
     local = sub.add_parser("local")
     local.add_argument("--base-url", default="http://127.0.0.1:8000")
     local.add_argument(
@@ -314,7 +344,13 @@ def main() -> None:
     imp.add_argument("directory", type=Path)
     imp.add_argument("--model", required=True)
     args = parser.parse_args()
-    docs = sample_docs()
+    if args.cmd == "draw-confirm":
+        used = set(pd.read_csv(PLAN)["doc_id"])
+        plan = draw_confirmation(pd.read_csv(EVENTS), used)
+        plan.to_csv(CONFIRM_PLAN, index=False)
+        print(f"{len(plan)} statements written to {CONFIRM_PLAN}")
+        return
+    docs = sample_docs(args.plan)
     if args.cmd == "local":
         if args.numbered:
             records = run_local_numbered(args.base_url, docs)

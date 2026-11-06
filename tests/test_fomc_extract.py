@@ -74,3 +74,22 @@ def test_import_reference_validates_and_records(tmp_path: Path) -> None:
     assert records[1].output is None and records[1].error is not None
     assert records[0].decoding is None and records[0].prompt_version == STATEMENT_V2.version
     assert (tmp_path / "out" / "claude-test.jsonl").read_text().count("\n") == 2
+
+
+def test_confirmation_sample_avoids_the_evaluation_sample_and_is_fixed() -> None:
+    from text_signals.sources.fomc.extract import N_CONFIRM, draw_confirmation
+
+    ids = [f"fomc-statement-2000{m:02d}{d:02d}" for m in range(1, 13) for d in (1, 15, 28)]
+    events = pd.DataFrame(
+        {
+            "doc_id": ids,
+            "release_date": [f"2000-{i[-4:-2]}-{i[-2:]}" for i in ids],
+            "in_main_sample": [True] * len(ids),
+        }
+    )
+    used = set(ids[:5])
+    a = draw_confirmation(events, used)
+    b = draw_confirmation(events, used)
+    assert len(a) == N_CONFIRM and a.equals(b)
+    assert not used & set(a["doc_id"])
+    assert list(a["code"][:2]) == ["C01", "C02"]

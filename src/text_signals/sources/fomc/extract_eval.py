@@ -204,9 +204,10 @@ def report(
     repairs: int = 0,
     numbered: bool = False,
     closed: bool = False,
+    plan: Path | None = None,
 ) -> str:
     """``model`` is read with ``repairs`` repair turns (0: single pass); the reference, single."""
-    docs = sample_docs()
+    docs = sample_docs(plan) if plan else sample_docs()
     with Fetcher(data_dir / "raw", delay_s=2.0) as fetcher:
         target = policy_target(
             fetch_fred_series(fetcher, "DFEDTAR"), fetch_fred_series(fetcher, "DFEDTARU")
@@ -365,6 +366,7 @@ def main() -> None:
     parser.add_argument("--numbered", action="store_true", help="the model's schema v2 run")
     parser.add_argument("--closed", action="store_true", help="the model's closed-list run")
     parser.add_argument("--variants", action="store_true", help="κ of every variant, with CIs")
+    parser.add_argument("--plan", type=Path, default=None, help="another sample than the 65")
     args = parser.parse_args()
     if args.variants:
         print(variants_table(args.model, args.reference))
@@ -376,6 +378,7 @@ def main() -> None:
             repairs=args.repairs,
             numbered=args.numbered,
             closed=args.closed,
+            plan=args.plan,
         )
     )
 
