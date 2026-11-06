@@ -200,3 +200,30 @@ def test_records_cached_before_the_repair_loop_read_as_single_pass() -> None:
     for key in ("procedure", "rejected", "problems_left"):
         old.pop(key)
     assert ExtractionRecord.model_validate(old).procedure == "single-pass"
+
+
+def test_a_per_document_schema_replaces_the_one_sent() -> None:
+    seen: list[dict[str, object]] = []
+    client = LLMClient("http://llm", client=_server(json.dumps(VALID), seen))
+    client.extract(
+        doc_id="d1",
+        text="x",
+        prompt=STATEMENT_V1,
+        schema=StatementExtraction,
+        schema_version=SCHEMA_VERSION,
+        decoding=Decoding(),
+        model="m",
+        model_path=None,
+        json_schema={"type": "object", "marker": True},
+    )
+    fmt = seen[0]["response_format"]
+    assert isinstance(fmt, dict) and fmt["json_schema"]["schema"]["marker"] is True
+
+
+def test_prompt_v3_numbers_sentences_and_asks_for_numbers() -> None:
+    from text_signals.encoders import SPLITTER_VERSION
+    from text_signals.sources.fomc.prompts import STATEMENT_V3
+
+    assert SPLITTER_VERSION == "1"  # prompt v3 is tied to this splitter
+    assert "number of the one sentence" in STATEMENT_V3.system
+    assert "word for word" not in STATEMENT_V3.system

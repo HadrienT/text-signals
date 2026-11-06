@@ -143,8 +143,13 @@ class LLMClient:
         schema: type[BaseModel],
         decoding: Decoding,
         model: str,
+        json_schema: dict[str, Any] | None = None,
     ) -> tuple[str, float, dict[str, Any], str]:
-        """One chat completion constrained by ``schema``: (raw text, latency, usage, model)."""
+        """One chat completion constrained by ``schema``: (raw text, latency, usage, model).
+
+        ``json_schema`` replaces the schema sent to the server, e.g. a stricter version of
+        ``schema`` for one document; the answer is still validated against ``schema``.
+        """
         body = {
             "model": model,
             "messages": messages,
@@ -155,7 +160,7 @@ class LLMClient:
                 "type": "json_schema",
                 "json_schema": {
                     "name": schema.__name__,
-                    "schema": schema.model_json_schema(),
+                    "schema": json_schema or schema.model_json_schema(),
                     "strict": True,
                 },
             },
@@ -179,9 +184,12 @@ class LLMClient:
         decoding: Decoding,
         model: str,
         model_path: str | None,
+        json_schema: dict[str, Any] | None = None,
     ) -> ExtractionRecord:
         """A single pass: one request, the answer kept as it is."""
-        raw, latency, usage, served = self._request(prompt.messages(text), schema, decoding, model)
+        raw, latency, usage, served = self._request(
+            prompt.messages(text), schema, decoding, model, json_schema
+        )
         output, error = _parse(raw, schema)
         return ExtractionRecord(
             doc_id=doc_id,
