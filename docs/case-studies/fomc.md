@@ -724,6 +724,19 @@ above are run next and reported whatever they give; and the score's reading was 
 against a reference reader, not ground truth (§6.6), so measurement error would bias β toward
 zero rather than create it.
 
+**Diagnostics of the primary test (2026-11-06).** `python -m text_signals.sources.fomc.study
+diagnostics`, on the same 243 statements and regressors. They document the data; the inference
+stays the one fixed in advance.
+
+| Check | Result | Reading |
+|---|---|---|
+| Collinearity | largest correlation −0.50 (`llm_tone`, `finbert_net_negative`); VIF 1.37, 1.10, 1.26, 1.63 | none flagged (threshold 5): the score's effect is estimated apart from the baselines |
+| Heteroskedasticity | Breusch–Pagan LM 60.1, p ≈ 3·10⁻¹²; White LM 101, p ≈ 3·10⁻¹⁵ | strong: the residual variance is not constant across statements. Newey–West standard errors are consistent under it, so the primary test's inference holds; OLS is not efficient, and a few high-variance statements may weigh heavily (influence checks next) |
+| Residual autocorrelation | Breusch–Godfrey (4 lags) LM 5.79, p = 0.22; Ljung–Box (4) Q 6.27, p = 0.18 | none detected |
+| Normality | Jarque–Bera 28.5, p ≈ 6·10⁻⁷; skew −0.06, kurtosis 4.67 | symmetric with fat tails (figure below); the tests are asymptotic, with T = 243, and the bootstrap and Huber checks address the tails |
+
+![QQ-plot of the primary test's residuals](figures/fomc_primary_qq.png)
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
@@ -1252,3 +1265,4 @@ and the report.
 | 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |
 | 2026-11-06 | Baselines of the primary test made precise: `lm_net_negative` and `finbert_net_negative`; the LLM score is Phi-4's `llm_tone` | "the LM and encoder scores" left two LM scores; uncertainty is not tone; settled before any join with market data (§6.3) |
 | 2026-11-06 | Primary test run once: β_LLM = 1.03 bp per score SD, HAC p = 0.004, T = 243 | the frozen specification, unchanged; diagnostics and robustness follow (§6.3) |
+| 2026-11-06 | Diagnostics: no collinearity, no residual autocorrelation, strong heteroskedasticity, fat tails | reported, not used to change the estimator; HAC is consistent under heteroskedasticity; influence and robustness checks follow (§6.3) |

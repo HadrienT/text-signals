@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from text_signals.event_study import EventRegression, fit
+from text_signals.event_study import Diagnostics, EventRegression, diagnostics, fit, qq_plot
 
 EVENTS = Path("data/processed/fomc/statement_events.csv")
 LLM_SCORES = Path("data/processed/fomc/llm_scores_phi-4.csv")
@@ -79,12 +79,55 @@ def describe(r: EventRegression) -> str:
     return "\n".join(lines)
 
 
+FIGURES = Path("docs/case-studies/figures")
+
+
+def primary_diagnostics(table: pd.DataFrame) -> Diagnostics:
+    """The assumption checks of protocol §6.3 on the primary test's sample and regressors."""
+    return diagnostics(primary_sample(table), OUTCOME, [SCORE, CONTROL, *BASELINES])
+
+
+def describe_diagnostics(d: Diagnostics) -> str:
+    names = list(d.vif)
+    lines = [f"T = {d.n}", "", "Correlations among regressors:", ""]
+    lines.append("| | " + " | ".join(names) + " |")
+    lines.append("|---|" + "---|" * len(names))
+    for a in names:
+        lines.append(
+            f"| {a} | "
+            + " | ".join(f"{float(d.correlations.loc[a, b]):.2f}" for b in names)
+            + " |"
+        )
+    lines += [
+        "",
+        "VIF: "
+        + ", ".join(f"{k} {v:.2f}" for k, v in d.vif.items())
+        + f" (flag above {d.VIF_FLAG:g}: {d.vif_flagged or 'none'})",
+        f"Breusch-Pagan LM {d.breusch_pagan[0]:.2f}, p = {d.breusch_pagan[1]:.3g}",
+        f"White LM {d.white[0]:.2f}, p = {d.white[1]:.3g}",
+        f"Breusch-Godfrey ({d.lags} lags) LM {d.breusch_godfrey[0]:.2f}, "
+        f"p = {d.breusch_godfrey[1]:.3g}",
+        f"Ljung-Box ({d.lags} lags) Q {d.ljung_box[0]:.2f}, p = {d.ljung_box[1]:.3g}",
+        f"Jarque-Bera {d.jarque_bera[0]:.1f}, p = {d.jarque_bera[1]:.3g}; skew {d.skew:.2f}, "
+        f"kurtosis {d.kurtosis:.2f}",
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     import sys
 
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
     if sys.argv[1:] == ["primary"]:
         print(describe(primary_test(table)))
+        return
+    if sys.argv[1:] == ["diagnostics"]:
+        d = primary_diagnostics(table)
+        print(describe_diagnostics(d))
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        path = FIGURES / "fomc_primary_qq.png"
+        qq_plot(d.residuals, str(path), title="Primary test: OLS residuals, 2-year yield, 30 min")
+        print(f"QQ-plot -> {path}")
         return
     table.to_csv(OUT, index=False)
     main_ = table[table["in_main_sample"].astype(bool)]
