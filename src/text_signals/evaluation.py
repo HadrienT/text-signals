@@ -99,3 +99,61 @@ def field_agreement(
     return FieldAgreement(
         field, len(a), len(pairs), both_empty, only_a, only_b, exact, within, mae, kappa
     )
+
+
+def _filled_kappa(
+    a: Sequence[Hashable | None], b: Sequence[Hashable | None], ordinal: bool
+) -> float | None:
+    pairs = [(x, y) for x, y in zip(a, b, strict=True) if x is not None and y is not None]
+    return cohen_kappa([x for x, _ in pairs], [y for _, y in pairs], ordinal=ordinal)
+
+
+@dataclass(frozen=True)
+class KappaComparison:
+    kappa_x: float | None
+    kappa_y: float | None
+    ci_x: tuple[float, float]
+    ci_y: tuple[float, float]
+    ci_diff: tuple[float, float]  # kappa_x - kappa_y
+
+
+def compare_kappas(
+    ref: Sequence[Hashable | None],
+    x: Sequence[Hashable | None],
+    y: Sequence[Hashable | None],
+    *,
+    ordinal: bool,
+    n_boot: int = 2000,
+    seed: int = 0,
+) -> KappaComparison:
+    """κ of two readers ``x`` and ``y`` against ``ref`` on the same documents, with percentile
+    bootstrap 95% intervals and the interval of their difference.
+
+    The bootstrap resamples documents, the same draw for both readers (paired), so the interval
+    of the difference accounts for the readers' errors falling on the same hard documents. κ is
+    computed on the documents where both the reader and ``ref`` filled the field.
+    """
+    import random
+
+    n = len(ref)
+    if not len(x) == len(y) == n:
+        raise ValueError("the readers must label the same documents")
+    rng = random.Random(seed)
+    kx, ky, diff = [], [], []
+    for _ in range(n_boot):
+        idx = [rng.randrange(n) for _ in range(n)]
+        r = [ref[i] for i in idx]
+        a = _filled_kappa([x[i] for i in idx], r, ordinal)
+        b = _filled_kappa([y[i] for i in idx], r, ordinal)
+        if a is not None and b is not None:
+            kx.append(a)
+            ky.append(b)
+            diff.append(a - b)
+
+    def ci(values: list[float]) -> tuple[float, float]:
+        values = sorted(values)
+        return values[int(0.025 * len(values))], values[int(0.975 * len(values)) - 1]
+
+    return KappaComparison(
+        _filled_kappa(x, ref, ordinal), _filled_kappa(y, ref, ordinal), ci(kx), ci(ky), ci(diff)
+    )

@@ -35,3 +35,16 @@ def test_field_agreement_separates_presence_and_value() -> None:
     assert f.exact == pytest.approx(2 / 3)
     assert f.within_one == pytest.approx(1.0)
     assert f.mae == pytest.approx(1 / 3)
+
+
+def test_compare_kappas_separates_a_good_and_a_bad_reader() -> None:
+    from text_signals.evaluation import compare_kappas
+
+    ref = [-2, -1, 0, 1, 2] * 12
+    good = list(ref)
+    good[0] = -1  # one near miss
+    bad = [-v for v in ref]  # every sign inverted
+    c = compare_kappas(ref, good, bad, ordinal=True, n_boot=300)
+    assert c.kappa_x is not None and c.kappa_y is not None and c.kappa_x > 0.9 > c.kappa_y
+    assert c.ci_diff[0] > 0  # the difference is clear
+    assert c.ci_x[0] <= c.kappa_x <= c.ci_x[1]
