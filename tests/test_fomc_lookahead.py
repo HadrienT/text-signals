@@ -37,6 +37,9 @@ def test_anonymise_removes_dates_years_and_names_but_not_policy_wording() -> Non
 
 
 def test_three_part_names_are_removed_whole() -> None:
-    vote = "Voting for the action were: Ben S. Bernanke, Chairman; Sarah Bloom Raskin; and Jeremy C. Stein."
+    vote = (
+        "Voting for the action were: Ben S. Bernanke, Chairman; Sarah Bloom Raskin; "
+        "and Jeremy C. Stein."
+    )
     out = anonymise(vote, member_names([vote]))
     assert "Raskin" not in out and "Bloom" not in out and "Stein" not in out
