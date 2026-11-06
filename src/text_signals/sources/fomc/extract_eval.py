@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from pydantic import ValidationError
 
 from text_signals.encoders import split_sentences
 from text_signals.evaluation import FieldAgreement, compare_kappas, field_agreement
@@ -49,7 +50,10 @@ from text_signals.sources.fomc.extraction import (
     tone_score,
 )
 
-RANGE_START = date(2008, 12, 16)  # first day of DFEDTARU
+RANGE_START = date(2008, 12, 16)
+# Documents whose first answer failed validation, so that their values come from the repaired
+# answer; filled by ``load_reader(..., first=True)``.
+values_from_repair: set[str] = set()  # first day of DFEDTARU
 ORDINAL = (*STANCE_FIELDS,)
 CATEGORICAL = ("policy_action", "risk_balance")
 DISSENTS = ("dissents_tighter", "dissents_easier", "dissents_other")
@@ -135,10 +139,16 @@ def load_reader(
     if first:
         # A repair run read at its first answer: what a single pass would have given (the first
         # answer is byte-identical to a single pass at temperature 0, protocol §6.6).
+        # A first answer that failed validation has no values to keep: the repaired answer is
+        # used, and ``values_from_repair`` lists those documents.
         for doc_id, r in out.items():
             if r.rejected:
                 raw = r.rejected[0].raw_output
-                parsed = StatementExtraction.model_validate_json(raw).model_dump(mode="json")
+                try:
+                    parsed = StatementExtraction.model_validate_json(raw).model_dump(mode="json")
+                except ValidationError:
+                    values_from_repair.add(doc_id)
+                    continue
                 out[doc_id] = r.model_copy(
                     update={"output": parsed, "error": None, "raw_output": raw, "rejected": []}
                 )
