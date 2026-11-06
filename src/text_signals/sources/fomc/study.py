@@ -22,6 +22,7 @@ from text_signals.event_study import (
     Robustness,
     diagnostics,
     fit,
+    holm,
     qq_plot,
     robustness,
 )
@@ -170,12 +171,95 @@ def describe_robustness(r: Robustness, influential: pd.DataFrame, sd: float) -> 
     return "\n".join(lines)
 
 
+PRESS_CONFERENCES = Path("data/interim/fomc/press_conferences.jsonl")
+
+
+def press_conference_days(path: Path = PRESS_CONFERENCES) -> set[str]:
+    """Release dates of the press conferences (each is released on the day it is held)."""
+    import json
+
+    return {
+        json.loads(line)["release_date"]
+        for line in path.read_text("utf-8").splitlines()
+        if line.strip()
+    }
+
+
+def secondary_tests(table: pd.DataFrame, press_days: set[str]) -> pd.DataFrame:
+    """The 14 secondary tests of protocol §6.3, in the order listed there, with Holm p-values
+    over the family."""
+    main = table[table["in_main_sample"].astype(bool)].copy()
+    main["press_day"] = main["release_date"].astype(str).isin(press_days)
+    base = [SCORE, CONTROL, *BASELINES]
+
+    def swap(old: str, new: str) -> list[str]:
+        return [new if r == old else r for r in base]
+
+    specs: list[tuple[str, pd.DataFrame, str, list[str], str]] = [
+        ("LLM score alone", main, OUTCOME, [SCORE, CONTROL], SCORE),
+        ("LM score alone", main, OUTCOME, [BASELINES[0], CONTROL], BASELINES[0]),
+        ("FinBERT score alone", main, OUTCOME, [BASELINES[1], CONTROL], BASELINES[1]),
+        ("H2: change in LLM score", main, OUTCOME, swap(SCORE, "d_llm_tone"), "d_llm_tone"),
+        ("Outcome: 10-year, 30 min", main, "d_UST10Y_30m_bp", base, SCORE),
+        ("Outcome: 2s10s slope, 30 min", main, "d_slope_2s10s_30m_bp", base, SCORE),
+        ("Outcome: daily ΔDGS2", main, "d_DGS2_bp", base, SCORE),
+        ("Control: ΔDGS3MO for MP1", main, OUTCOME, swap(CONTROL, "d_DGS3MO_bp"), SCORE),
+        (
+            "From May 1999",
+            main[main["release_date"].astype(str) >= "1999-05-01"],
+            OUTCOME,
+            base,
+            SCORE,
+        ),
+        ("Scheduled meetings only", main[~main["unscheduled"].astype(bool)], OUTCOME, base, SCORE),
+        ("Press conference days", main[main["press_day"]], OUTCOME, base, SCORE),
+        ("Not press conference days", main[~main["press_day"]], OUTCOME, base, SCORE),
+        ("Zero lower bound", main[main["zlb"].astype(bool)], OUTCOME, base, SCORE),
+        ("Not zero lower bound", main[~main["zlb"].astype(bool)], OUTCOME, base, SCORE),
+    ]
+    rows = []
+    for name, data, outcome, regressors, tested in specs:
+        sample = data.dropna(subset=[outcome, *regressors])
+        r = fit(sample, outcome, regressors, [tested])
+        c = r.coefficients[tested]
+        rows.append(
+            {
+                "test": name,
+                "outcome": outcome,
+                "tested": tested,
+                "n": r.n,
+                "hac_lags": r.hac_lags,
+                "beta": c.beta,
+                "per_sd": c.per_sd,
+                "p": r.wald_p,
+                "r2": r.r2,
+            }
+        )
+    frame = pd.DataFrame(rows)
+    frame["p_holm"] = holm(list(frame["p"]))
+    return frame
+
+
+def incremental_r2(table: pd.DataFrame) -> tuple[float, float]:
+    """R² of MP1 and the two baselines, then with ``llm_tone`` added (primary sample)."""
+    sample = primary_sample(table)
+    without = fit(sample, OUTCOME, [CONTROL, *BASELINES], [CONTROL]).r2
+    with_llm = fit(sample, OUTCOME, [SCORE, CONTROL, *BASELINES], [SCORE]).r2
+    return without, with_llm
+
+
 def main() -> None:
     import sys
 
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
     if sys.argv[1:] == ["primary"]:
         print(describe(primary_test(table)))
+        return
+    if sys.argv[1:] == ["secondary"]:
+        sec = secondary_tests(table, press_conference_days())
+        print(sec.round(4).to_string(index=False))
+        r0, r1 = incremental_r2(table)
+        print(f"\nR² without llm_tone {r0:.3f}, with {r1:.3f}: +{r1 - r0:.3f}")
         return
     if sys.argv[1:] == ["robustness"]:
         r, infl = primary_robustness(table)

@@ -94,3 +94,12 @@ def test_block_bootstrap_keeps_blocks_of_consecutive_events() -> None:
     x = np.column_stack([np.ones(20), np.arange(20, dtype=float)])
     b = block_bootstrap_beta(y, x, 1, block=4, reps=50, seed=0)
     assert np.allclose(b, 1.0)  # an exact line stays exact under any resampling
+
+
+def test_holm_matches_a_hand_computation() -> None:
+    from text_signals.event_study import holm
+
+    # sorted p: 0.01, 0.02, 0.03, 0.5 -> 4*0.01, 3*0.02, max(0.06, 2*0.03), max(.., 1*0.5)
+    assert holm([0.03, 0.5, 0.01, 0.02]) == pytest.approx([0.06, 0.5, 0.04, 0.06])
+    assert holm([0.04, 0.03]) == pytest.approx([0.06, 0.06])  # monotone: 2*0.03, then max
+    assert holm([0.6, 0.7]) == pytest.approx([1.0, 1.0])  # capped

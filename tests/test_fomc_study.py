@@ -99,3 +99,35 @@ def test_robustness_runner_lists_influential_statements_by_date() -> None:
     r, infl = primary_robustness(table)
     assert table.loc[5, "release_date"] in set(infl["release_date"])
     assert "Huber" in describe_robustness(r, infl, 1.0)
+
+
+def test_secondary_tests_are_the_fourteen_listed_with_holm() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import secondary_tests
+
+    rng = np.random.default_rng(2)
+    n = 160
+    dates = pd.date_range("1996-01-01", periods=n, freq="60D").astype(str)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": dates,
+            "llm_tone": rng.normal(0, 1, n),
+            "d_llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "d_DGS3MO_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+            "unscheduled": [i % 10 == 0 for i in range(n)],
+            "zlb": [60 <= i < 110 for i in range(n)],
+        }
+    )
+    for col in ["d_UST2Y_30m_bp", "d_UST10Y_30m_bp", "d_slope_2s10s_30m_bp", "d_DGS2_bp"]:
+        table[col] = table["llm_tone"] + rng.normal(0, 1, n)
+    press = set(dates[100:])
+    sec = secondary_tests(table, press)
+    assert len(sec) == 14
+    assert sec.loc[sec["test"] == "Press conference days", "n"].item() == 60
+    assert (sec["p_holm"] >= sec["p"]).all()

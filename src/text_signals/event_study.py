@@ -284,3 +284,15 @@ def robustness(
         huber_se=float(huber.bse[tested]),
         huber_p=float(huber.pvalues[tested]),
     )
+
+
+def holm(pvalues: Sequence[float]) -> list[float]:
+    """Holm–Bonferroni adjusted p-values (step-down, monotone, capped at 1), in input order."""
+    m = len(pvalues)
+    order = sorted(range(m), key=lambda i: pvalues[i])
+    adjusted = [0.0] * m
+    running = 0.0
+    for rank, i in enumerate(order):
+        running = max(running, min(1.0, (m - rank) * pvalues[i]))
+        adjusted[i] = running
+    return adjusted
