@@ -103,3 +103,34 @@ def test_holm_matches_a_hand_computation() -> None:
     assert holm([0.03, 0.5, 0.01, 0.02]) == pytest.approx([0.06, 0.5, 0.04, 0.06])
     assert holm([0.04, 0.03]) == pytest.approx([0.06, 0.06])  # monotone: 2*0.03, then max
     assert holm([0.6, 0.7]) == pytest.approx([1.0, 1.0])  # capped
+
+
+def test_expanding_forecasts_never_use_their_own_period() -> None:
+    from text_signals.event_study import expanding_forecasts
+
+    n = 60
+    periods = pd.Series(np.repeat(np.arange(6), 10))
+    x = np.arange(n, dtype=float)
+    data = pd.DataFrame({"x": x, "y": 2 * x})
+    data.loc[50:, "y"] = 1000.0  # period 5 breaks the relation
+    f = expanding_forecasts(data, "y", ["x"], periods, first=3)
+    assert f[:30].isna().all()
+    assert np.allclose(f[30:50], 2 * x[30:50])  # learnt from periods 0-2 and 0-3
+    assert np.allclose(f[50:], 2 * x[50:])  # period 5 predicted without seeing itself
+
+
+def test_oos_r2_and_clark_west_reward_a_useful_regressor() -> None:
+    from text_signals.event_study import clark_west, expanding_forecasts, oos_r2
+
+    rng = np.random.default_rng(5)
+    n = 300
+    d = pd.DataFrame({"s": rng.normal(0, 1, n), "c": rng.normal(0, 1, n)})
+    d["y"] = 1.0 * d["s"] + 0.5 * d["c"] + rng.normal(0, 1, n)
+    periods = pd.Series(np.repeat(np.arange(15), 20))
+    full = expanding_forecasts(d, "y", ["s", "c"], periods, first=3).to_numpy()
+    base = expanding_forecasts(d, "y", ["c"], periods, first=3).to_numpy()
+    keep = ~np.isnan(full)
+    y = d["y"].to_numpy()[keep]
+    assert oos_r2(y, full[keep], base[keep]) > 0.2
+    t, p = clark_west(y, base[keep], full[keep])
+    assert t > 3 and p < 0.01

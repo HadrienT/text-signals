@@ -296,3 +296,46 @@ def holm(pvalues: Sequence[float]) -> list[float]:
         running = max(running, min(1.0, (m - rank) * pvalues[i]))
         adjusted[i] = running
     return adjusted
+
+
+def expanding_forecasts(
+    data: pd.DataFrame,
+    outcome: str,
+    regressors: Sequence[str],
+    periods: pd.Series,
+    first: int,
+) -> pd.Series:
+    """Out-of-sample OLS forecasts: each event of period p >= ``first`` is predicted by
+    coefficients fitted on all events of earlier periods only (expanding window, one refit per
+    period). Events before ``first`` get NaN. ``periods`` are integers aligned with ``data``."""
+    y = data[outcome].astype(float).to_numpy()
+    x = sm.add_constant(data[list(regressors)].astype(float)).to_numpy()
+    per = periods.to_numpy()
+    out = np.full(len(y), np.nan)
+    for p in sorted(set(per[per >= first])):
+        train, test = per < p, per == p
+        coef, *_ = np.linalg.lstsq(x[train], y[train], rcond=None)
+        out[test] = x[test] @ coef
+    return pd.Series(out, index=data.index)
+
+
+def oos_r2(y: np.ndarray, forecast: np.ndarray, benchmark: np.ndarray) -> float:
+    """1 − Σ(y − forecast)² / Σ(y − benchmark)²: positive when the forecast beats the
+    benchmark out of sample."""
+    return float(1 - np.sum((y - forecast) ** 2) / np.sum((y - benchmark) ** 2))
+
+
+def clark_west(
+    y: np.ndarray, small: np.ndarray, large: np.ndarray, *, lags: int | None = None
+) -> tuple[float, float]:
+    """Clark–West (2007) test that the larger, nesting model forecasts better: the adjusted
+    loss difference f = (y − ŝ)² − [(y − l̂)² − (ŝ − l̂)²], regressed on a constant with HAC
+    variance. Returns (t, one-sided p)."""
+    from scipy import stats
+
+    f = (y - small) ** 2 - ((y - large) ** 2 - (small - large) ** 2)
+    n = len(f)
+    maxlags = newey_west_lags(n) if lags is None else lags
+    res = sm.OLS(f, np.ones(n)).fit(cov_type="HAC", cov_kwds={"maxlags": maxlags})
+    t = float(res.tvalues[0])
+    return t, float(1 - stats.norm.cdf(t))
