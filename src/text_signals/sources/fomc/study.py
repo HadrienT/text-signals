@@ -92,11 +92,10 @@ def describe_diagnostics(d: Diagnostics) -> str:
     lines = [f"T = {d.n}", "", "Correlations among regressors:", ""]
     lines.append("| | " + " | ".join(names) + " |")
     lines.append("|---|" + "---|" * len(names))
-    for a in names:
+    corr = d.correlations.to_numpy(dtype=float)
+    for i, a in enumerate(names):
         lines.append(
-            f"| {a} | "
-            + " | ".join(f"{float(d.correlations.loc[a, b]):.2f}" for b in names)
-            + " |"
+            f"| {a} | " + " | ".join(f"{corr[i, j]:.2f}" for j in range(len(names))) + " |"
         )
     lines += [
         "",
