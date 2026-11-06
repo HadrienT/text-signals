@@ -1,0 +1,22 @@
+{
+  "code": "P4",
+  "pass": "practice",
+  "labelled_at": "2026-11-06T14:34:55.452395Z",
+  "guide_version": "fomc-label-guide-v1",
+  "schema_version": "fomc-statement-v1",
+  "policy_action": "hold",
+  "change_bp": 0,
+  "forward_guidance": -1,
+  "inflation_assessment": -1,
+  "labor_market_assessment": 2,
+  "growth_assessment": 1,
+  "balance_sheet": -1,
+  "risk_balance": "growth",
+  "dissents_tighter": 0,
+  "dissents_easier": 0,
+  "dissents_other": 0,
+  "unsure": [
+    "inflation_assessment"
+  ],
+  "notes": ""
+}

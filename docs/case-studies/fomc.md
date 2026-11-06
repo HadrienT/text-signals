@@ -498,23 +498,66 @@ an open decision (§7).
      full sample with the contamination stated, and also on its statements' sentences that are
      not in the labelled pool.
 
-3. **LLM structured extraction** with a fixed Pydantic schema, settled in week 2. Candidate
-   fields:
-   - `policy_action`: hike / cut / hold, and size;
-   - `forward_guidance_stance`: −2 … +2, dovish → hawkish;
-   - `inflation_assessment`, `labour_assessment`, `growth_assessment`: −2 … +2;
-   - `balance_of_risks`: categorical;
-   - `changed_phrases`: wording changes versus the previous statement, each with a quote;
-   - `evidence`: a verbatim span for every field, used to check faithfulness.
+3. **LLM structured extraction.** Schema `fomc-statement-v1`, fixed on 2026-11-06, before any
+   model output was seen (`text_signals/sources/fomc/extraction.py`). Sign convention for every
+   stance field: an integer from −2 to +2, **positive = hawkish** (towards higher policy rates),
+   or null when the statement says nothing on it. Every filled field carries a verbatim
+   `evidence` span; a span absent from the text counts as a hallucination (§6.6).
 
+   | Field | Values | Role |
+   |---|---|---|
+   | `policy_action` | raise / cut / hold / no rate decision, and the change in bp | quality check only; not in the tone score, since MP1 measures the decision surprise |
+   | `forward_guidance` | −2 … +2 | signal on the future path of the policy rate: the core of the tone measure |
+   | `inflation_assessment` | −2 … +2 | concern that inflation is too high (−2: too low, deflation risk) |
+   | `labor_market_assessment` | −2 … +2 | judged strength of the labour market |
+   | `growth_assessment` | −2 … +2 | judged strength of economic activity |
+   | `balance_sheet` | −2 … +2 | asset purchases (dovish) and runoff (hawkish); the main remaining tool at the zero lower bound |
+   | `risk_balance` | inflation / balanced / growth | where the main risk is placed |
+   | `dissents` | list: member, preferred tighter / easier / other | votes against the action, a factual sign of a divided Committee |
+
+   The anchors of each −2 … +2 scale are the field descriptions in the code. They are sent to
+   the model inside the JSON schema and are the basis of the hand-labelling guide, so the model
+   and the labeller read the same definitions; changing one requires a new schema version.
+
+   Prompt `fomc-statement-prompt-v1` (`sources/fomc/prompts.py`, 2026-11-06): the model sees
+   the statement text only (no title, date or URL), is told to use the text alone and not what
+   it knows of the period or of market reactions, to leave a field null rather than guess, and
+   to copy its evidence word for word. The output is constrained by the schema's JSON schema
+   (`response_format` of type `json_schema`). Client and cache: `text_signals/llm.py`; an
+   output that fails validation is stored with its error and counted, not retried silently.
    Deterministic decoding (temperature 0, fixed seed). Prompt and schema versioned in the
    repository. Every output stored with model name, prompt version, schema version and decoding
    parameters, and cached by (document sha256, model, prompt version) so that long runs can
    resume.
-4. **Aggregate LLM score.** A predefined combination of the fields, fixed *before* the
-   regressions are run, so that no specification is fitted to the result.
-
+4. **Aggregate LLM scores** (fixed on 2026-11-06, before any model output was seen; functions
+   `tone_score`, `guidance_score` and `score_changes` in `extraction.py`).
+   - **Primary, `llm_tone`:** the equal-weight mean of the five stance fields that are filled
+     (`forward_guidance`, `inflation_assessment`, `labor_market_assessment`,
+     `growth_assessment`, `balance_sheet`), from −2 (dovish) to +2 (hawkish). Missing when none
+     is filled; such statements leave the primary test and are counted. No weight is chosen, so
+     nothing is fitted to the outcome.
+   - **Secondary, `llm_guidance`:** `forward_guidance` alone. It tests whether the effect runs
+     through the signal on the future path of rates. Missing when the statement has no
+     forward-looking sentence on rates (frequent before 2003). Holm-corrected with the other
+     secondary tests (§6.3).
+   - **H2, `d_llm_tone`:** the primary score minus the score of the most recent earlier
+     statement with a score, in release order. The model scores each statement alone; it is not
+     asked to compare two texts, which would double the prompt and add a source of error.
+   - Rejected: a weighted mean (weights would be arbitrary).
+   - **Deferred, not specified (2026-11-06):** a machine-learning variant suggested by the
+     maintainer, in which the weights of the five fields are learned (for example by ridge
+     regression) inside the expanding window of §6.4 and compared with `llm_tone` on
+     out-of-sample R². A random
+     train/validation/test split is ruled out (neighbouring statements share their wording); a
+     single chronological split leaves about 50 test statements and doubles the minimum
+     detectable effect. To be specified, or dropped, before any score is joined to the outcome.
 ---
+   **Prompt v2** (`fomc-statement-prompt-v2`, 2026-11-06): v1's rules plus the JSON schema with
+   its field descriptions in the system message. `llama-server` turns `response_format` into a
+   grammar and does not show the schema to the model: an out-of-sample smoke test (28 January
+   2015) had 906 prompt tokens with or without the schema, and the model, not knowing the
+   evidence rule, produced an invalid output. v2 has about 3,500 prompt tokens. Changed before
+   any output on the evaluation sample existed; v1 was never run on it.
 
 ## 6. Method
 
@@ -634,11 +677,353 @@ Everything else below is secondary.
 
 ### 6.6 Evaluation of the extraction
 
-- Hand-label about 60 statements, stratified by decade and policy regime, **before** looking at
-  model outputs.
-- Per-field accuracy or MAE; Cohen's κ against a second labelling pass on a subset; rate of
-  `evidence` spans that do not appear verbatim in the document (hallucination).
-- Compare 2–3 local models on quality, latency and tokens per document.
+**Hand-labelled set** (`sources/fomc/labelling.py`, drawn 2026-11-06, before any model output
+existed). Sample `fomc-label-sample-v1`, seed 20261106, stored in
+`data/labels/fomc_statements_sample_v1.csv` (versioned). From the 247 statements of the main
+sample, 60 are drawn by stratum (decade × zero lower bound or not), in proportion to the stratum
+sizes with at least 4 per stratum (largest-remainder rounding):
+
+| Stratum | Statements | Drawn |
+|---|---|---|
+| 1990s, normal rates | 20 | 6 |
+| 2000s, normal rates | 80 | 15 |
+| 2000s, zero lower bound | 8 | 5 |
+| 2010s, normal rates | 32 | 8 |
+| 2010s, zero lower bound | 49 | 11 |
+| 2020s, normal rates | 40 | 9 |
+| 2020s, zero lower bound | 18 | 6 |
+
+Five practice statements are drawn from the rest of the main sample, to train the labeller; they
+are not scored against the model. 15 of the 60 are labelled a second time, later and without the
+first answers in view, to measure the labeller's own consistency (Cohen's κ). The statements are
+shown under shuffled codes (S01–S60, P1–P5), with no date.
+
+- **Labeller.** The maintainer, who is not a monetary-policy specialist. The labeller applies the
+  written definitions; the binding ones are the schema's field descriptions (§5.2), shown with a
+  plain-French explanation (`HELP_FR`, guide `fomc-label-guide-v1`). The labeller fills the same
+  fields as the model, without evidence spans, and may mark any field "unsure". Every field needs
+  an explicit answer, "empty" included. A field marked unsure too often is a sign that its scale
+  is unclear; it may be simplified to three levels, but only before model outputs are seen.
+- **Practice review.** After the five practice statements, the labeller's reading is discussed
+  with Claude Code. This touches only the practice statements, never the 60.
+- **Listening aid.** The labeller listens to each statement read aloud while the sentence being
+  read is highlighted. The audio is made by the maintainer's local AudioBook pipeline (Fish Audio
+  S2-Pro, reference voice `phil-benson`, a LibriVox reader) from a listening PDF
+  (`write_listening_pdf`) in which fractions are written in words ("5 and a quarter percent")
+  and characters the PDF font cannot draw are made plain; the wording is otherwise the
+  statement's. The labelling page (`label_app.py`, `just label`, port 8772) plays it next to the
+  form and writes `data/labels/fomc_statements_v1/<pass>/<code>.json`.
+- **Not seen by the labeller:** dates, URLs, market data and model outputs.
+
+**Hand labelling stopped (2026-11-06), replaced by a reference reader.** After the five
+practice statements the maintainer judged the labelling too long to finish, and the practice
+review showed systematic misreadings that a non-specialist would need more training to avoid
+(the sign of "gradual increases", "empty" against 0). No label of the 60 exists and no model
+output on the sample had been seen when this was decided. The five practice labels stay in
+`data/labels/fomc_statements_v1/practice/` and are not used. In their place:
+
+- **Reference reader: Claude** (`claude-opus-5-5`, run from Claude Code on 2026-11-06). Claude
+  Code is not an API, so `extract.py blind-inputs` writes one file per statement with its text
+  only (no date, URL, document id or other model's output) plus the prompt; three independent
+  Claude sessions, each told to read only those files, fill one JSON per statement under the
+  same prompt (v2) and schema; `extract.py import` validates them and stores them as
+  `ExtractionRecord` (decoding and latency unknown, so null). The readers' own notes on the
+  fields they were unsure of are kept with the run.
+- **The reference read in series, the local models one at a time.** Each Claude reader
+  filled 20 to 25 statements in one context and could see its earlier answers, which may make
+  it more consistent or anchor it on its first readings; a local model reads each statement
+  alone.
+- **The reference had a verifier.** The Claude readers checked their own spans by script and
+  corrected them before handing in, which a single-pass local model cannot do; the repair loop
+  below gives the local model the same step.
+- **What the reference is not.** It is a second, stronger reader, not ground truth: agreement
+  with it measures consistency of reading, not correctness. Claude knows the history of the Fed
+  and may recognise a statement and its date despite rule 1; it is not reproducible to the
+  token. Two readers noted they had inferred the size of a rate move the text did not state
+  (S24, S25, S29, against S55 and S58 left empty), which is exactly this kind of knowledge.
+- **Checks that need no reader.** The decision and its size against the FRED federal funds
+  target (`DFEDTAR` to 15 Dec 2008, then `DFEDTARU`; the target on the day after the release
+  minus the last one before it); evidence spans not found verbatim (hallucination); outputs
+  that fail validation.
+
+**Metrics** (`text_signals.evaluation`, `sources/fomc/extract_eval.py`). For each field, the
+share of statements where the two readers agree on whether the text says anything (presence),
+and, where both filled it, exact agreement, agreement within one step, mean absolute gap and
+Cohen's κ (quadratic weights on the −2…+2 scales); correlation of the tone scores. Compare 2–3
+local models on these, on latency and on tokens per document.
+
+**First run (2026-11-06), Qwen3-Coder-30B-A3B-Instruct (Q4_K_M, `llama-server`, prompt v2)
+against the Claude reference, 65 statements** (`just extract-local`, then `just extract-eval
+Qwen3-Coder-30B-A3B-Instruct claude-opus-5-5`; CSVs in `data/processed/fomc/extraction_eval_*.csv`). This run is on the evaluation sample only; no
+score has been joined to market data.
+
+| | Qwen3-Coder-30B | Claude (reference) |
+|---|---|---|
+| Outputs failing validation | 2 / 65 (a non-rate statement given a value without evidence) | 0 / 65 |
+| Decision direction vs FRED | 63 / 63 | 65 / 65 |
+| Decision size vs FRED | 61 / 63 | 61 / 65 (4 left empty: size not in the text) |
+| Evidence not verbatim | 19 / 405 spans | 0 / 379 |
+| Latency, tokens (median) | 3.6 s; 3,264 in, 376 out | – |
+
+| Field | Same presence | Exact (both filled) | Within 1 | κ (quadratic) |
+|---|---|---|---|---|
+| forward_guidance | 79% (Qwen fills 13 Claude leaves empty) | 79% | 96% | 0.89 |
+| inflation_assessment | 100% | 81% | 96% | 0.87 |
+| labor_market_assessment | 95% | 50% | 92% | 0.74 |
+| growth_assessment | 95% | 58% | 91% | 0.70 |
+| balance_sheet | 100% | 59% | 68% | 0.07 |
+| risk_balance | 75% (Qwen fills 16 Claude leaves empty) | 98% | – | 0.96 (unweighted) |
+
+Tone score correlation 0.86 on 60 statements; Qwen is 0.20 more hawkish on average.
+
+Findings, read from the outputs:
+
+- **Balance sheet: Qwen inverts the sign of new purchases.** It gives +2 to "will increase its
+  holdings of Treasury securities by at least $500 billion" (S19) and to the 2009 purchase
+  programme (S12), where the schema says −2. 8 of the 14 disagreements are this inversion. The
+  field enters `llm_tone`, so with this model the primary score would be wrong in the QE years.
+- **The non-verbatim spans are stitched, not invented.** Qwen joins real fragments with "..."
+  or across sentences (e.g. S38: 34 of 56 words match, then "... household spending"). They
+  still fail the verbatim rule and are counted.
+- **Size of a move the text does not state.** When a statement gives only the new range (S19,
+  March 2020, −100 bp), Qwen guessed −25 and Claude left it empty; on S24 (+50 bp) Qwen said +25
+  and Claude +50, which the text does not say (see the contamination note above).
+- Prompt v2 is the one used; the change from v1 is in §5.2.
+
+**Second model (2026-11-06): Phi-4** (Microsoft, 14B, `microsoft/phi-4-gguf` @ `6edc2ef6`,
+`phi-4-Q8_0.gguf`, sha256 `f68df5d3…a110`, MIT licence). Chosen for a reading task in English
+only: its model card gives English as the intended language and a training-data cutoff of June
+2024, an official date, which the look-ahead tests need (§6.7); for Qwen3-30B-A3B-Instruct-2507
+only third-party listings give one (June 2025). Served by the AgenticEnv profile `research`
+(context 16,384), same prompt v2, same decoding.
+
+| | Qwen3-Coder-30B | Phi-4 | Claude (reference) |
+|---|---|---|---|
+| Outputs failing validation | 2 / 65 | 0 / 65 | 0 / 65 |
+| Decision direction vs FRED | 63 / 63 | 64 / 65 | 65 / 65 |
+| Decision size vs FRED | 61 / 63 | 59 / 65 | 61 / 65 |
+| Evidence not verbatim (all stitched fragments) | 19 / 405 | 28 / 403 | 0 / 379 |
+| Latency (median) | 3.6 s | 8.2 s | – |
+| κ against Claude: forward guidance | 0.89 | 0.84 | |
+| inflation | 0.87 | 0.80 | |
+| labour market | 0.74 | 0.85 | |
+| growth | 0.70 | 0.71 | |
+| balance sheet | 0.07 | 0.88 | |
+| Tone score: correlation with Claude, mean gap | 0.86, +0.20 | 0.91, +0.02 | |
+
+Phi-4 does not invert the balance-sheet sign and its tone score is the closest to the
+reference, with no average bias. Its weaknesses: more stitched evidence, and it leaves the
+decision empty on the FIMA repo facility statement (S16) instead of `no_rate_decision`; on the
+size of moves the text does not state it guesses, as Qwen does (S19, S24, S29). All 28
+non-verbatim spans start with at least four words found in the text.
+
+**Repair loop (2026-11-06).** Why was Claude at 0 non-verbatim spans? Not only because it is a
+stronger model: each of the three Claude readers ran a script that looked for its spans in the
+text and corrected the missing ones before handing in (they say so in their notes). Phi-4 had
+one try. The repair loop gives the local model the same chance, in code
+(`LLMClient.extract_with_repair`):
+
+1. **Act.** The model answers once, as in a single pass.
+2. **Verify.** A verifier, plain code with no model (`evidence_problems`), lists every span that
+   is not in the text.
+3. **Feed back.** If it finds something, the problems go back to the model as a new user turn in
+   the same conversation. The model keeps no memory between requests, so the request holds the
+   whole history: system, statement, its first answer, the problems. The message is versioned
+   (`fomc-repair-v1`): it quotes each bad span, asks for the exact words or a null, and asks to
+   change nothing else.
+4. **Stop** when the verifier finds nothing or after `max_repairs` turns (here 1).
+
+Every rejected answer is kept in the record (`rejected`), with what the verifier said and what
+the turn cost, so the first answer and the repaired one can both be measured. The cache key
+includes the procedure (`single-pass` or `repair-1:fomc-repair-v1`), so the two runs live side
+by side.
+
+Phi-4, 65 statements (`just extract-local --repairs 1`, `just extract-eval phi-4
+claude-opus-5-5 --repairs 1`):
+
+| | Single pass | Repair loop (≤ 1 turn) |
+|---|---|---|
+| Statements sent back | – | 17 |
+| Non-verbatim spans | 28 / 403 | 17 / 402 |
+| Field values changed by the repair | – | 2 |
+| Median latency per statement | 8.2 s | 9.1 s (about twice as long for one sent back) |
+| Tone: correlation with Claude, mean gap | 0.91, +0.02 | 0.91, +0.02 |
+
+- **Determinism holds.** The first answer of the repair run is byte-identical to the single-pass
+  answer on 65 of 65 statements (temperature 0, seed 0, same server build).
+- **The loop fixes the easy cases.** A span stitched from two sentences with "..." becomes one of
+  the two sentences (P4, inflation).
+- **It fails when the verifier's message does not say where the error is.** P4, forward
+  guidance: the model wrote "The Committee expects that, with gradual adjustments…", the
+  statement says "The Committee *currently* expects that…". Told only that the span is not in
+  the text, the model sent back the same span. A feedback that showed the closest passage would
+  likely fix it; constraining the evidence to sentence numbers would make the error impossible
+  (next step).
+- **The repair barely touches the reading.** 2 field values moved, and the agreement with the
+  reference is unchanged, so the repair fixes citations, not judgements.
+
+The repair loop is kept as a measured procedure, not adopted: it fixes 11 of 28 spans for about
+10% more time.
+
+**Evidence by sentence number: schema v2, prompt v3 (2026-11-06).** The statement is shown as
+numbered sentences (`split_sentences`, splitter version 1, the FinBERT splitter; median 14
+sentences per statement) and each evidence is a sentence number (`StatementExtractionV2`). The
+schema sent with each request (`schema_v2_for(n)`) allows only the numbers 1..n, so the
+server's grammar makes a citation that is not in the text impossible. The values and their
+definitions are v1's; `to_spans` turns a v2 answer back into v1 form so that every metric
+applies unchanged. Phi-4, 65 statements (`just extract-local --numbered`):
+
+| Phi-4 | Copy (v1, single pass) | Repair loop | Sentence number (v2) |
+|---|---|---|---|
+| Non-verbatim evidence | 28 / 403 | 17 / 402 | 0 / 399 (by construction) |
+| Median latency; output tokens | 8.2 s; 365 | 9.1 s; 396 | 5.0 s; 190 |
+| κ forward guidance vs Claude | 0.84 | 0.84 | **0.30** |
+| κ inflation / labour / growth / balance sheet | 0.80 / 0.85 / 0.71 / 0.88 | 0.80 / 0.85 / 0.71 / 0.87 | 0.81 / 0.82 / 0.66 / 0.82 |
+| Tone: correlation, mean gap vs Claude | 0.91, +0.02 | 0.91, +0.02 | 0.88, +0.21 |
+
+**Finding: copying the words is part of the reading.** With numbers, 13 statements that the
+reference reads as an explicit commitment to low rates (−2, e.g. "exceptionally low levels of
+the federal funds rate for an extended period") get +1. Phi-4 cites the right sentence and
+gets its sign wrong. On S41 the cited sentence is the same in both runs, "The Committee expects
+to maintain an accommodative stance of monetary policy until these outcomes are achieved.":
+after copying it, the model writes −2; after writing its number, +1. The schema puts the
+evidence before the value, so in v1 the model writes the words of the sentence just before it
+judges them, a short chain of thought; a number gives it nothing to condition on. Removing the
+copy removed the hallucinations and part of the reading.
+
+Schema v2 is not adopted.
+
+**Closed list of sentences: schema v1, prompt v4 (2026-11-06).** This variant keeps the copy and
+the guarantee: the evidence stays text, but the schema sent with each request
+(`schema_v1_closed`) restricts it to the whole sentences of the statement (a string enum), so the
+model writes the words and cannot write other ones. Prompt v4 is v2 with rule 4 changed to "copy
+… the one whole sentence of the statement that supports it best" (`just extract-local
+--closed`). Phi-4, 65 statements: 0 of 406 spans not verbatim, all 65 decisions in the right
+direction (the FIMA facility statement now `no_rate_decision`), 9.0 s median, tone correlation
+0.88 with the reference and mean gap +0.01.
+
+All four variants, κ against the reference with 95% percentile bootstrap intervals (2,000 paired
+resamples of the 65 statements; Δ is the paired interval of the difference from `copy`;
+`compare_kappas`, `just extract-eval phi-4 claude-opus-5-5 --variants`):
+
+| Field | copy (v1) | repair loop | sentence number | closed list |
+|---|---|---|---|---|
+| forward_guidance | 0.84 [0.71, 0.93] | 0.84; Δ [0.00, 0.00] | 0.30; Δ [−0.73, −0.33] | 0.73; Δ [−0.23, −0.02] |
+| inflation | 0.80 [0.68, 0.90] | 0.80; Δ [0.00, 0.00] | 0.81; Δ [−0.14, +0.15] | 0.85; Δ [−0.01, +0.14] |
+| labour market | 0.85 [0.77, 0.91] | 0.85; Δ [0.00, 0.00] | 0.82; Δ [−0.11, +0.04] | 0.84; Δ [−0.05, +0.03] |
+| growth | 0.71 [0.54, 0.84] | 0.71; Δ [0.00, 0.00] | 0.66; Δ [−0.15, +0.02] | 0.71; Δ [−0.10, +0.10] |
+| balance sheet | 0.88 [0.80, 0.94] | 0.87; Δ [−0.05, 0.00] | 0.82; Δ [−0.16, +0.02] | 0.72; Δ [−0.38, −0.02] |
+| Non-verbatim spans | 28 / 403 | 17 / 402 | 0 (by construction) | 0 (by construction) |
+
+Reading of the table:
+
+- **Free copy reads best.** On forward guidance and the balance sheet, the closed list is worse
+  than free copy, and the paired interval of the difference excludes zero, if only just. On the
+  other three fields no variant differs from free copy beyond noise. With 65 statements the
+  intervals are wide: a κ of 0.84 is compatible with 0.71 to 0.93.
+- **The closed list softens rather than flips.** Its forward-guidance errors are mostly −1 where
+  the reference says −2 (10 statements), not sign errors as with sentence numbers. A likely
+  cause, not tested: forced to cite one whole sentence, the model can no longer quote the few
+  words that carry the commitment, nor join two sentences; part of what was counted as
+  stitching was the model combining evidence across sentences.
+- **No variant gives both.** Free copy gives the best reading with a few non-verbatim spans; the
+  constrained variants guarantee the spans and lose some reading.
+
+**Procedure chosen (2026-11-06, by the maintainer): free copy with the repair loop.** Prompt
+v2, schema v1, at most one repair turn (`fomc-repair-v1`), Phi-4 Q8_0. The values the regression
+uses are those of free copy, the best reading (the repair moved 2 values of 65 statements and
+left every κ unchanged); the repair only lowers the share of non-verbatim spans, and the ones
+left are flagged in each record (`problems_left`). The reason, in the maintainer's words: the
+regression is the goal, so the reading with the best scores wins over perfect citations.
+
+**Rule for replacing the local model by Claude.** The project builds a local pipeline first.
+Claude would replace it only if it does clearly better, and "better" cannot be judged against
+the reference, which is Claude itself, nor against the regression, which would choose the
+reader by the outcome. It is judged only on checks that see no market data: the decision and
+its size against FRED, the dissents against the vote paragraph, and the stability of a reading
+when it is run again. Settled before any score meets market data.
+
+**Confirmation outside the 65 (fixed before the run).** Sample `fomc-confirm-sample-v1`: 30
+statements of the main sample drawn at random (seed 20261107, no strata) from the 182 not in the
+evaluation sample, codes C01–C30 (`extract.py draw-confirm`, stored in
+`data/labels/fomc_confirm_sample_v1.csv`). Claude reads them blind as before (two sessions of
+15) and Phi-4 runs the chosen procedure. The procedure is confirmed if, on the 30: at most one
+output fails validation; the tone score's correlation with the reference is at least 0.80; and
+the κ of each stance field is at least the lower bound of its 95% interval on the 65 (forward
+guidance 0.71, inflation 0.68, labour market 0.77, growth 0.54, balance sheet 0.78). With 30
+statements a single κ is noisy, so a field below its bound is reported and looked at, not taken
+alone as a failure; two or more fields below their bound, or the correlation below 0.80, mean
+the choice is reopened.
+
+**Confirmation result (2026-11-06).** Phi-4 with the chosen procedure on the 30 new statements
+(`just extract-eval phi-4 claude-opus-5-5 --repairs 1 --plan
+data/labels/fomc_confirm_sample_v1.csv`; `--first` reads the same run at its first answer, which
+is what a single pass gives):
+
+| Phi-4, 30 new statements | Bound (from the 65) | Repair loop (chosen) | First answer (single pass) |
+|---|---|---|---|
+| Outputs failing validation | ≤ 1 | 1 | 0 |
+| Tone correlation with Claude | ≥ 0.80 | 0.84 | 0.86 |
+| κ forward guidance | 0.71 | **0.70** (23 both filled) | **0.62** (26 both filled) |
+| κ inflation | 0.68 | 0.81 | 0.86 |
+| κ labour market | 0.77 | 0.86 | 0.88 |
+| κ growth | 0.54 | 0.75 | 0.78 |
+| κ balance sheet | 0.78 | 0.86 | 0.85 |
+| Forward guidance: same presence as Claude | – | 83% | 90% |
+| Non-verbatim spans | – | 6 / 183 | 17 / 193 |
+| Decisions right in direction | – | 29 / 29 | 30 / 30 |
+
+By the criterion fixed before the run, the procedure is **confirmed**: no failed-validation
+excess, correlation above 0.80, one field (forward guidance, 0.70 against 0.71) below its bound,
+which the rule says to report and look at. Looking at it shows two things the 65 had hidden:
+
+- **The repair loop changes the reading here.** It moved 5 values on 30 statements (2 on the
+  65), three of them forward guidance set to null (C07, C17, C28), where the reference reads +2,
+  −2 and +2: told that a span is not verbatim, the model sometimes drops the value instead of
+  fixing the span, which the repair message allows ("If no passage … supports the value, set
+  the value and its evidence to null"). In one statement (29 April 2020) it nulled values but
+  kept their evidence, and a valid first answer became an invalid one.
+- **κ on the documents both readers filled rewards leaving hard cases empty.** The repair's
+  forward-guidance κ (0.70) is higher than the first answer's (0.62) partly because the values
+  it dropped were disagreements; its presence agreement fell from 90% to 83%. κ and presence
+  must be read together.
+- **Forward guidance is weaker out of sample.** 0.62 to 0.70 on the 30 against 0.84 on the 65,
+  on which the procedure was chosen; part of the gap is the noise of 30 statements, part is the
+  optimism of choosing on the sample one reports. The other four fields hold.
+
+C07 and C28 also show the size problem again: the text gives only the new range after a 75 bp
+raise; Phi-4 writes +25, Claude leaves it empty. `change_bp` is a quality check only (§5.2) and
+stays so.
+
+**Procedure revised after the confirmation (2026-11-06, by the maintainer): the values come from
+the first answer.** One run with the repair loop gives both: the **values** that enter the
+scores are read from the first answer (`--first`; identical to a single pass), and the
+**repaired answer is kept for the audit of the evidence only** (6 non-verbatim spans left on 183
+instead of 17, with `problems_left` naming them). The repair never changes a score. The reason:
+the regression uses the values, and on the 30 new statements the repair changed values (5,
+three forward-guidance readings dropped) and made one valid answer invalid, without a better
+reading. This is a change after a result was seen, made on the confirmation sample; it is not
+confirmed again on new statements. On the 30, the first answer had 0 failed outputs, tone
+correlation 0.86 with the reference, and forward guidance κ 0.62 with 90% presence agreement.
+
+**Scoring run (2026-11-06).** Phi-4 with this procedure on all 250 statements (`just
+extract-local --all --repairs 1`; the 95 statements already read came from the cache), then
+`python -m text_signals.sources.fomc.llm_scores`, which writes
+`data/processed/fomc/llm_scores_phi-4.csv`: per statement `llm_tone`, `llm_guidance`,
+`d_llm_tone`, whether a score exists, where its values come from, the model, its weights file,
+the prompt and schema versions, and `llm_after_cutoff` (release after 30 June 2024, the last
+day of Phi-4's stated cutoff month; 20 statements).
+
+- **When the first answer fails validation** there are no values to protect, so the repaired
+  answer is used if it is valid, and the row says so (`llm_values_from`). Rule added at the
+  scoring run, before any score was joined to market data: 2 statements (18 March 2003, 27
+  January 2021); the first is invalid in both answers and has no score.
+- 249 statements have a valid reading; 245 have a tone score (in 4 the model filled no stance
+  field). No score has been joined to market data yet.
+
+**Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
+judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
+outside the sample, with the reference reading them blind as before.
 
 ### 6.7 Look-ahead tests (H3)
 
@@ -677,8 +1062,12 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Minutes sample start | proposed (§5.1) |
 | Encoder baseline: FinBERT, `finbert_net_negative` | fixed 2026-11-05 (§5.2) |
 | Second encoder baseline: FOMC-RoBERTa | proposed; needs gated access (§5.2) |
-| LLM schema and aggregate score | week 2 |
-| Hand-labelling guide | week 2, before labelling |
+| LLM extraction schema `fomc-statement-v1` | fixed 2026-11-06 (§5.2) |
+| LLM aggregate scores: `llm_tone` (primary), `llm_guidance` (secondary), `d_llm_tone` (H2) | fixed 2026-11-06 (§5.2) |
+| Learned field weights in the expanding window | deferred; to specify or drop before scoring meets the outcome (§5.2) |
+| Hand-labelling guide | dropped 2026-11-06: hand labels replaced by a reference reader (§6.6) |
+| Prompt `fomc-statement-prompt-v2` (schema in the system message) | fixed 2026-11-06 (§5.2) |
+| Extraction procedure: Phi-4, prompt v2, schema v1; values from the first answer, repair loop (1 turn) for the evidence audit only | chosen 2026-11-06, confirmed on 30 new statements, revised after confirmation (values from the first answer) (§6.6) |
 
 If anything changes after results are known, the change and its reason go into the decision log
 and the report.
@@ -782,3 +1171,21 @@ and the report.
 | 2026-11-05 | Minutes and press conference transcripts fetched and parsed; release dates checked against four sources | week 1 scope; a one-day error in an event date would void an event study |
 | 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
 | 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
+| 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
+| 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
+| 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
+| 2026-11-06 | Labelling sample v1 drawn (60 + 5 practice, 15 second pass), labeller listens with an audio aid | stratified by decade and regime; the maintainer is not a specialist, so definitions, practice and a consistency check carry the quality |
+| 2026-11-06 | Prompt v2: the schema and its definitions go into the system message | `llama-server` uses the schema as a grammar only, so v1 never showed the model the definitions (§5.2) |
+| 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for the maintainer; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
+| 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
+| 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, AgenticEnv profile `research`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
+| 2026-11-06 | Repair loop added and measured (one turn, `fomc-repair-v1`): Phi-4 non-verbatim spans 28 → 17, 2 values moved | the reference had checked its own spans; the loop gives the local model the same step; kept as a measured procedure, not adopted (§6.6) |
+| 2026-11-06 | Schema v2 (evidence by sentence number) measured and not adopted | no hallucination and twice as fast, but forward guidance κ falls from 0.84 to 0.30: without copying the sentence the model misjudges it (§6.6) |
+| 2026-11-06 | The variant finally chosen will be confirmed outside the 65 | prompt v2, the repair loop and schema v2 were all judged on the same sample |
+| 2026-11-06 | Closed-list variant (evidence restricted to whole sentences, prompt v4) measured | 0 non-verbatim spans, but forward guidance and balance sheet κ below free copy (paired bootstrap interval of the difference excludes 0); variant choice left to the maintainer (§6.6) |
+| 2026-11-06 | Procedure chosen: free copy with the repair loop, Phi-4 | best scores for the regression; repair lowers non-verbatim spans without moving the values (§6.6) |
+| 2026-11-06 | Claude replaces the local model only on checks that see no market data | the reference cannot judge itself and the regression must not choose the reader (§6.6) |
+| 2026-11-06 | Confirmation sample of 30 new statements and its pass criterion, fixed before the run | the procedure was chosen on the 65 (§6.6) |
+| 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
+| 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
+| 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |

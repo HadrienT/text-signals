@@ -11,6 +11,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.1.1",
     "pydantic>=2.7",
+    "pymupdf>=2.1",
     "pypdf>=6.21.4",
     "safetensors>=0.8.0",
     "torch==2.6.0",
@@ -57,3 +58,8 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu124" }
+
+# PyMuPDF is untyped; it is only used to write the listening PDF for the labeller.
+[[tool.mypy.overrides]]
+module = ["text_signals.sources.fomc.labelling", "test_fomc_labelling"]
+disallow_untyped_calls = false
