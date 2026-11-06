@@ -35,3 +35,39 @@ def test_no_effect_is_not_rejected_and_missing_values_are_refused() -> None:
     bad = _data(0.0).assign(score=lambda d: d["score"].where(d.index != 3))
     with pytest.raises(ValueError, match="missing"):
         fit(bad, "y", ["score", "control"], ["score"])
+
+
+def test_diagnostics_detect_what_they_should() -> None:
+    from text_signals.event_study import diagnostics
+
+    rng = np.random.default_rng(3)
+    n = 400
+    a = rng.normal(0, 1, n)
+    clean = pd.DataFrame({"a": a, "b": rng.normal(0, 1, n)})
+    clean["y"] = clean["a"] + rng.normal(0, 1, n)
+    d = diagnostics(clean, "y", ["a", "b"])
+    assert d.vif_flagged == [] and d.breusch_pagan[1] > 0.01 and d.jarque_bera[1] > 0.01
+
+    collinear = clean.assign(b=a + rng.normal(0, 0.1, n))
+    assert "a" in diagnostics(collinear, "y", ["a", "b"]).vif_flagged
+
+    hetero = clean.assign(y=clean["a"] + rng.normal(0, 1, n) * (1 + 3 * np.abs(a)))
+    assert diagnostics(hetero, "y", ["a", "b"]).breusch_pagan[1] < 0.01
+
+    e = np.zeros(n)
+    for t in range(1, n):
+        e[t] = 0.7 * e[t - 1] + rng.normal()
+    auto = clean.assign(y=clean["a"] + e)
+    d_auto = diagnostics(auto, "y", ["a", "b"])
+    assert d_auto.breusch_godfrey[1] < 0.01 and d_auto.ljung_box[1] < 0.01
+
+    fat = clean.assign(y=clean["a"] + rng.standard_t(2, n))
+    assert diagnostics(fat, "y", ["a", "b"]).jarque_bera[1] < 0.01
+
+
+def test_qq_plot_writes_a_png(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from text_signals.event_study import qq_plot
+
+    path = tmp_path / "qq.png"
+    qq_plot(np.random.default_rng(0).normal(size=50), str(path), title="t")
+    assert path.read_bytes()[:4] == b"\x89PNG"
