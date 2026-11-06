@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from text_signals.event_study import EventRegression, fit
+
 EVENTS = Path("data/processed/fomc/statement_events.csv")
 LLM_SCORES = Path("data/processed/fomc/llm_scores_phi-4.csv")
 OUT = Path("data/processed/fomc/study_table.csv")
@@ -50,8 +52,40 @@ def primary_sample(table: pd.DataFrame) -> pd.DataFrame:
     return main.dropna(subset=cols)
 
 
+def primary_test(table: pd.DataFrame) -> EventRegression:
+    """The one primary test of protocol §6.3: H0 β_LLM = 0, HAC Wald, main sample."""
+    sample = primary_sample(table)
+    return fit(sample, OUTCOME, [SCORE, CONTROL, *BASELINES], [SCORE])
+
+
+def describe(r: EventRegression) -> str:
+    lines = [
+        f"{r.outcome} on {', '.join(r.coefficients)}; T = {r.n}, HAC lags {r.hac_lags}, "
+        f"R² {r.r2:.3f}",
+        "",
+        "| Regressor | β | HAC se | t | p | SD | β per SD |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for c in r.coefficients.values():
+        lines.append(
+            f"| {c.name} | {c.beta:.3f} | {c.se:.3f} | {c.t:.2f} | {c.p:.3f} | {c.sd:.4g} "
+            f"| {c.per_sd:.2f} |"
+        )
+    lines.append("")
+    lines.append(
+        f"Wald (HAC) of the tested coefficient = 0: χ²({r.wald_df}) = {r.wald_stat:.3f}, "
+        f"p = {r.wald_p:.3f}"
+    )
+    return "\n".join(lines)
+
+
 def main() -> None:
+    import sys
+
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
+    if sys.argv[1:] == ["primary"]:
+        print(describe(primary_test(table)))
+        return
     table.to_csv(OUT, index=False)
     main_ = table[table["in_main_sample"].astype(bool)]
     used = primary_sample(table)
