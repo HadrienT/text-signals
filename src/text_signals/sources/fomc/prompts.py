@@ -9,6 +9,8 @@ contain dates and names; the anonymisation test (protocol §6.7) removes them.
 
 from __future__ import annotations
 
+import json
+
 from text_signals.llm import Prompt
 
 STATEMENT_V1 = Prompt(
@@ -29,4 +31,26 @@ STATEMENT_V1 = Prompt(
         "is a concern, while 'elevated' uncertainty is not about inflation."
     ),
     user_template="Statement:\n\n{text}",
+)
+
+
+def _schema_text() -> str:
+    # Imported here so that prompts.py does not depend on the schema at import of llm.py.
+    from text_signals.sources.fomc.extraction import StatementExtraction
+
+    return json.dumps(StatementExtraction.model_json_schema(), indent=1)
+
+
+# v2 (2026-11-06): llama-server turns ``response_format`` into a grammar and does not show the
+# schema to the model, so v1 never gave the model the field definitions (an out-of-sample smoke
+# test had 906 prompt tokens with or without the schema). v2 puts the schema, with its
+# descriptions, in the system message. The rules are v1's.
+STATEMENT_V2 = Prompt(
+    version="fomc-statement-prompt-v2",
+    system=(
+        STATEMENT_V1.system
+        + "\n\nThe form is the JSON schema below. The description of each field is its "
+        "definition: follow it.\n\n" + _schema_text()
+    ),
+    user_template=STATEMENT_V1.user_template,
 )

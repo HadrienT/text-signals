@@ -51,9 +51,9 @@ class ExtractionRecord(BaseModel):
     model_path: str | None  # the weights file, from the server's /props
     prompt_version: str
     schema_version: str
-    decoding: Decoding
+    decoding: Decoding | None  # None when the decoding cannot be set (a hosted assistant)
     created_at: datetime
-    latency_s: float
+    latency_s: float | None
     prompt_tokens: int | None
     completion_tokens: int | None
     raw_output: str

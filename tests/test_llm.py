@@ -106,3 +106,11 @@ def test_prompt_shows_the_text_only() -> None:
     messages = STATEMENT_V1.messages("Inflation remains elevated.")
     assert messages[1]["content"] == "Statement:\n\nInflation remains elevated."
     assert "Do not use what you may know" in messages[0]["content"]
+
+
+def test_prompt_v2_carries_the_field_definitions() -> None:
+    from text_signals.sources.fomc.prompts import STATEMENT_V2
+
+    system = STATEMENT_V2.messages("x")[0]["content"]
+    assert system.startswith(STATEMENT_V1.system)
+    assert "further firming or gradual increases may be needed" in system
