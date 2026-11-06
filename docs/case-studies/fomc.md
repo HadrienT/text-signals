@@ -737,6 +737,33 @@ stays the one fixed in advance.
 
 ![QQ-plot of the primary test's residuals](figures/fomc_primary_qq.png)
 
+**Robustness of the primary test (2026-11-06).** `python -m text_signals.sources.fomc.study
+robustness`, same 243 statements and regressors; every check fixed in advance above.
+
+| Check | β | β per SD (bp) | se | p |
+|---|---|---|---|---|
+| OLS, HAC with 4 lags (primary) | 1.381 | 1.03 | 0.484 | 0.004 |
+| OLS, HC3 | 1.381 | 1.03 | 0.555 | 0.014 |
+| Moving-block pairs bootstrap (blocks of 4, 9,999 replications) | 1.381 | 1.03 | 0.481 | 95% interval [0.49, 2.38], per SD [0.36, 1.77] |
+| Refit without the 19 influential statements (Cook's distance > 4/T), HAC | 1.359 | 1.01 | – | 0.001 |
+| Huber robust regression | 0.979 | 0.73 | 0.427 | 0.022 |
+
+- **Every check keeps the effect positive and significant at 5%.** The bootstrap interval
+  excludes zero; HC3, which ignores autocorrelation and is more conservative in small samples,
+  gives p = 0.014.
+- **The influential statements do not carry the result.** 19 statements pass Cook's 4/T
+  threshold: mostly large decision surprises (4 February 1994, the intermeeting cuts of 15
+  October 1998, 3 January and 18 April 2001, 22 January 2008) and a few large text-only moves
+  (18 May 1999, 28 January 2004, 2022–2023). Without them β is unchanged (1.01 bp per SD) and
+  more precise (p = 0.001).
+- **Huber gives a smaller effect, 0.73 bp per SD.** Down-weighting the large residuals lowers β
+  by about a third: part of the OLS estimate comes from statements with large moves, which is
+  where the tone matters most if it matters. Still significant (p = 0.02); its standard error is
+  the model's own, not HAC.
+
+The estimate to report is the primary one, 1.03 bp per SD (bootstrap 95% interval 0.36 to 1.77),
+with Huber's 0.73 as the lower robust figure.
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
@@ -1266,3 +1293,4 @@ and the report.
 | 2026-11-06 | Baselines of the primary test made precise: `lm_net_negative` and `finbert_net_negative`; the LLM score is Phi-4's `llm_tone` | "the LM and encoder scores" left two LM scores; uncertainty is not tone; settled before any join with market data (§6.3) |
 | 2026-11-06 | Primary test run once: β_LLM = 1.03 bp per score SD, HAC p = 0.004, T = 243 | the frozen specification, unchanged; diagnostics and robustness follow (§6.3) |
 | 2026-11-06 | Diagnostics: no collinearity, no residual autocorrelation, strong heteroskedasticity, fat tails | reported, not used to change the estimator; HAC is consistent under heteroskedasticity; influence and robustness checks follow (§6.3) |
+| 2026-11-06 | Robustness: HC3, block bootstrap, refit without 19 influential statements and Huber all keep β_LLM positive and significant (Huber 0.73 bp per SD) | the checks fixed in advance; no observation dropped from the primary estimate (§6.3) |
