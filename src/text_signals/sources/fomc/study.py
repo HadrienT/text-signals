@@ -14,15 +14,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from text_signals.event_study import (
     Diagnostics,
     EventRegression,
     Robustness,
+    clark_west,
     diagnostics,
+    expanding_forecasts,
     fit,
     holm,
+    oos_r2,
     qq_plot,
     robustness,
 )
@@ -248,12 +252,51 @@ def incremental_r2(table: pd.DataFrame) -> tuple[float, float]:
     return without, with_llm
 
 
+FIRST_OOS_YEAR = 2000  # protocol §6.4
+
+
+def out_of_sample(table: pd.DataFrame) -> tuple[dict[str, float], pd.DataFrame]:
+    """Protocol §6.4: full vs baseline vs zero forecasts, expanding window refitted yearly."""
+    sample = primary_sample(table).reset_index(drop=True)
+    years = pd.to_datetime(sample["release_date"]).dt.year
+    full = expanding_forecasts(sample, OUTCOME, [SCORE, CONTROL, *BASELINES], years, FIRST_OOS_YEAR)
+    base = expanding_forecasts(sample, OUTCOME, [CONTROL, *BASELINES], years, FIRST_OOS_YEAR)
+    keep = full.notna().to_numpy()
+    y = sample[OUTCOME].to_numpy(dtype=float)[keep]
+    f, b = full.to_numpy()[keep], base.to_numpy()[keep]
+    zero = np.zeros_like(y)
+    t, p = clark_west(y, b, f)
+    summary = {
+        "n_oos": float(keep.sum()),
+        "r2_full_vs_zero": oos_r2(y, f, zero),
+        "r2_base_vs_zero": oos_r2(y, b, zero),
+        "r2_full_vs_base": oos_r2(y, f, b),
+        "clark_west_t": t,
+        "clark_west_p": p,
+    }
+    by_year = (
+        pd.DataFrame(
+            {"year": years[keep].to_numpy(), "se_full": (y - f) ** 2, "se_base": (y - b) ** 2}
+        )
+        .groupby("year")
+        .sum()
+    )
+    by_year["cum_gain"] = (by_year["se_base"] - by_year["se_full"]).cumsum()
+    return summary, by_year
+
+
 def main() -> None:
     import sys
 
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
     if sys.argv[1:] == ["primary"]:
         print(describe(primary_test(table)))
+        return
+    if sys.argv[1:] == ["oos"]:
+        summary, by_year = out_of_sample(table)
+        for k, v in summary.items():
+            print(f"{k}: {v:.4f}")
+        print(by_year.round(1).to_string())
         return
     if sys.argv[1:] == ["secondary"]:
         sec = secondary_tests(table, press_conference_days())

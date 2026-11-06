@@ -131,3 +131,27 @@ def test_secondary_tests_are_the_fourteen_listed_with_holm() -> None:
     assert len(sec) == 14
     assert sec.loc[sec["test"] == "Press conference days", "n"].item() == 60
     assert (sec["p_holm"] >= sec["p"]).all()
+
+
+def test_out_of_sample_starts_in_2000_and_compares_nested_models() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import out_of_sample
+
+    rng = np.random.default_rng(6)
+    n = 200
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("1994-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = 2 * table["llm_tone"] + 0.3 * table["MP1_bp"] + rng.normal(0, 1, n)
+    summary, by_year = out_of_sample(table)
+    assert by_year.index.min() == 2000
+    assert summary["r2_full_vs_base"] > 0.3 and summary["clark_west_p"] < 0.01
