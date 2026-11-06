@@ -699,6 +699,31 @@ repeat their wording), which lowers the effective sample size and the power.
     effective day in 2022 (17 March, the day after the announcement). On the day before the
     release, both conventions give the range that was known.
 
+**Primary test result (run once, 2026-11-06).** `python -m text_signals.sources.fomc.study
+primary`, on the specification above with no change: the 243 main-sample statements that have
+every variable (4 have no `llm_tone`: 22 March 1994, 18 April 1994, 18 March 2003, 9 May 2010),
+HAC with 4 lags.
+
+| Regressor | β | HAC se | t | p | SD | Effect per SD (bp) |
+|---|---|---|---|---|---|---|
+| `llm_tone` (Phi-4) | 1.381 | 0.484 | 2.85 | 0.004 | 0.744 | **+1.03** |
+| `MP1_bp` | 0.307 | 0.099 | 3.10 | 0.002 | 6.88 | +2.11 |
+| `lm_net_negative` | −34.0 | 31.8 | −1.07 | 0.284 | 0.0114 | −0.39 |
+| `finbert_net_negative` | −0.02 | 1.80 | −0.01 | 0.991 | 0.204 | −0.00 |
+
+R² 0.221. Wald (HAC) of β_LLM = 0: χ²(1) = 8.14, **p = 0.004**: H0 is rejected at 5%. The sign is
+the one H1 expects: a statement read one standard deviation more hawkish comes with a 2-year
+yield about 1 bp higher in the 30 minutes around its release, given the decision surprise and the
+two baseline scores, which add nothing once the LLM score is in. The effect is close to the
+minimum detectable effect computed before scoring (0.92 bp per SD, §6.3), so the test had about
+the power planned for an effect of this size, and its estimate is not precise: a 95% interval of
+β per SD is roughly 0.3 to 1.7 bp.
+
+What this does not yet show: the diagnostics, robustness checks and secondary tests listed
+above are run next and reported whatever they give; and the score's reading was evaluated
+against a reference reader, not ground truth (§6.6), so measurement error would bias β toward
+zero rather than create it.
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
@@ -1226,3 +1251,4 @@ and the report.
 | 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
 | 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |
 | 2026-11-06 | Baselines of the primary test made precise: `lm_net_negative` and `finbert_net_negative`; the LLM score is Phi-4's `llm_tone` | "the LM and encoder scores" left two LM scores; uncertainty is not tone; settled before any join with market data (§6.3) |
+| 2026-11-06 | Primary test run once: β_LLM = 1.03 bp per score SD, HAC p = 0.004, T = 243 | the frozen specification, unchanged; diagnostics and robustness follow (§6.3) |
