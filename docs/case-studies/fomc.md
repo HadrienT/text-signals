@@ -1006,6 +1006,21 @@ reading. This is a change after a result was seen, made on the confirmation samp
 confirmed again on new statements. On the 30, the first answer had 0 failed outputs, tone
 correlation 0.86 with the reference, and forward guidance κ 0.62 with 90% presence agreement.
 
+**Scoring run (2026-11-06).** Phi-4 with this procedure on all 250 statements (`just
+extract-local --all --repairs 1`; the 95 statements already read came from the cache), then
+`python -m text_signals.sources.fomc.llm_scores`, which writes
+`data/processed/fomc/llm_scores_phi-4.csv`: per statement `llm_tone`, `llm_guidance`,
+`d_llm_tone`, whether a score exists, where its values come from, the model, its weights file,
+the prompt and schema versions, and `llm_after_cutoff` (release after 30 June 2024, the last
+day of Phi-4's stated cutoff month; 20 statements).
+
+- **When the first answer fails validation** there are no values to protect, so the repaired
+  answer is used if it is valid, and the row says so (`llm_values_from`). Rule added at the
+  scoring run, before any score was joined to market data: 2 statements (18 March 2003, 27
+  January 2021); the first is invalid in both answers and has no score.
+- 249 statements have a valid reading; 245 have a tone score (in 4 the model filled no stance
+  field). No score has been joined to market data yet.
+
 **Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
 judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
 outside the sample, with the reference reading them blind as before.
@@ -1173,3 +1188,4 @@ and the report.
 | 2026-11-06 | Confirmation sample of 30 new statements and its pass criterion, fixed before the run | the procedure was chosen on the 65 (§6.6) |
 | 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
 | 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
+| 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |
