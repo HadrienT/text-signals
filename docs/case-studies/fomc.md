@@ -929,6 +929,32 @@ Reading of the table:
 - **No variant gives both.** Free copy gives the best reading with a few non-verbatim spans; the
   constrained variants guarantee the spans and lose some reading.
 
+**Procedure chosen (2026-11-06, by the maintainer): free copy with the repair loop.** Prompt
+v2, schema v1, at most one repair turn (`fomc-repair-v1`), Phi-4 Q8_0. The values the regression
+uses are those of free copy, the best reading (the repair moved 2 values of 65 statements and
+left every κ unchanged); the repair only lowers the share of non-verbatim spans, and the ones
+left are flagged in each record (`problems_left`). The reason, in the maintainer's words: the
+regression is the goal, so the reading with the best scores wins over perfect citations.
+
+**Rule for replacing the local model by Claude.** The project builds a local pipeline first.
+Claude would replace it only if it does clearly better, and "better" cannot be judged against
+the reference, which is Claude itself, nor against the regression, which would choose the
+reader by the outcome. It is judged only on checks that see no market data: the decision and
+its size against FRED, the dissents against the vote paragraph, and the stability of a reading
+when it is run again. Settled before any score meets market data.
+
+**Confirmation outside the 65 (fixed before the run).** Sample `fomc-confirm-sample-v1`: 30
+statements of the main sample drawn at random (seed 20261107, no strata) from the 182 not in the
+evaluation sample, codes C01–C30 (`extract.py draw-confirm`, stored in
+`data/labels/fomc_confirm_sample_v1.csv`). Claude reads them blind as before (two sessions of
+15) and Phi-4 runs the chosen procedure. The procedure is confirmed if, on the 30: at most one
+output fails validation; the tone score's correlation with the reference is at least 0.80; and
+the κ of each stance field is at least the lower bound of its 95% interval on the 65 (forward
+guidance 0.71, inflation 0.68, labour market 0.77, growth 0.54, balance sheet 0.78). With 30
+statements a single κ is noisy, so a field below its bound is reported and looked at, not taken
+alone as a failure; two or more fields below their bound, or the correlation below 0.80, mean
+the choice is reopened.
+
 **Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
 judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
 outside the sample, with the reference reading them blind as before.
@@ -975,6 +1001,7 @@ Fixed before seeing any regression output, and dated here when fixed:
 | Learned field weights in the expanding window | deferred; to specify or drop before scoring meets the outcome (§5.2) |
 | Hand-labelling guide | dropped 2026-11-06: hand labels replaced by a reference reader (§6.6) |
 | Prompt `fomc-statement-prompt-v2` (schema in the system message) | fixed 2026-11-06 (§5.2) |
+| Extraction procedure: Phi-4, prompt v2, schema v1, repair loop (1 turn) | chosen 2026-11-06; to confirm on 30 new statements (§6.6) |
 
 If anything changes after results are known, the change and its reason go into the decision log
 and the report.
@@ -1090,3 +1117,6 @@ and the report.
 | 2026-11-06 | Schema v2 (evidence by sentence number) measured and not adopted | no hallucination and twice as fast, but forward guidance κ falls from 0.84 to 0.30: without copying the sentence the model misjudges it (§6.6) |
 | 2026-11-06 | The variant finally chosen will be confirmed outside the 65 | prompt v2, the repair loop and schema v2 were all judged on the same sample |
 | 2026-11-06 | Closed-list variant (evidence restricted to whole sentences, prompt v4) measured | 0 non-verbatim spans, but forward guidance and balance sheet κ below free copy (paired bootstrap interval of the difference excludes 0); variant choice left to the maintainer (§6.6) |
+| 2026-11-06 | Procedure chosen: free copy with the repair loop, Phi-4 | best scores for the regression; repair lowers non-verbatim spans without moving the values (§6.6) |
+| 2026-11-06 | Claude replaces the local model only on checks that see no market data | the reference cannot judge itself and the regression must not choose the reader (§6.6) |
+| 2026-11-06 | Confirmation sample of 30 new statements and its pass criterion, fixed before the run | the procedure was chosen on the 65 (§6.6) |
