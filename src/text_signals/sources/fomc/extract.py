@@ -31,6 +31,7 @@ from text_signals.llm import (
     ExtractionRecord,
     LLMClient,
     extract_all,
+    read_cache,
     repair_procedure,
     text_sha256,
 )
@@ -316,9 +317,15 @@ def import_reference(
                 error=error,
             )
         )
+    # Merge into the reader's cache: records of other documents (another sample) are kept, and
+    # a document read again replaces its earlier record.
     target = cache_path(model, out)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("".join(r.model_dump_json() + "\n" for r in records), encoding="utf-8")
+    kept = {
+        k: r for k, r in read_cache(target).items() if r.doc_id not in {x.doc_id for x in records}
+    }
+    merged = [*kept.values(), *records]
+    target.write_text("".join(r.model_dump_json() + "\n" for r in merged), encoding="utf-8")
     return records
 
 

@@ -93,3 +93,15 @@ def test_confirmation_sample_avoids_the_evaluation_sample_and_is_fixed() -> None
     assert len(a) == N_CONFIRM and a.equals(b)
     assert not used & set(a["doc_id"])
     assert list(a["code"][:2]) == ["C01", "C02"]
+
+
+def test_import_keeps_the_records_of_another_sample(tmp_path: Path) -> None:
+    first = [SampleDoc("S01", "d1", date(2017, 9, 20), TEXT)]
+    second = [SampleDoc("C01", "d9", date(2018, 1, 31), TEXT)]
+    (tmp_path / "S01.json").write_text(json.dumps(VALID))
+    (tmp_path / "C01.json").write_text(json.dumps(VALID))
+    import_reference(tmp_path, first, "claude-test", out=tmp_path / "out")
+    import_reference(tmp_path, second, "claude-test", out=tmp_path / "out")
+    import_reference(tmp_path, second, "claude-test", out=tmp_path / "out")  # read again
+    lines = (tmp_path / "out" / "claude-test.jsonl").read_text().splitlines()
+    assert sorted(json.loads(x)["doc_id"] for x in lines) == ["d1", "d9"]
