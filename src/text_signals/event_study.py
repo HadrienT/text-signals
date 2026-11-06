@@ -377,3 +377,51 @@ def cumulative_gain_plot(
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+
+
+@dataclass(frozen=True)
+class PermutationTest:
+    observed_t: float
+    permuted_t: np.ndarray
+    reps: int
+
+    @property
+    def p(self) -> float:
+        """Share of permutations, the observed one included, with |t| ≥ |observed t|."""
+        hits = int(np.sum(np.abs(self.permuted_t) >= abs(self.observed_t)))
+        return (hits + 1) / (self.reps + 1)
+
+
+def permutation_test(
+    data: pd.DataFrame,
+    outcome: str,
+    regressors: Sequence[str],
+    tested: str,
+    *,
+    reps: int = 9_999,
+    seed: int = 0,
+) -> PermutationTest:
+    """Shuffle ``tested`` across events, keep everything else with its own event, refit, and
+    collect the HAC t of ``tested``: its distribution when the regressor is unrelated to the
+    event it is attached to."""
+    frame = data[[outcome, *regressors]].astype(float).reset_index(drop=True)
+    if frame.isna().any().any():
+        raise ValueError("missing values: select the sample before the permutation test")
+    lags = newey_west_lags(len(frame))
+    x = sm.add_constant(frame[list(regressors)])
+    j = list(x.columns).index(tested)
+    y = frame[outcome].to_numpy()
+
+    def t_of(xm: np.ndarray) -> float:
+        res = sm.OLS(y, xm).fit(cov_type="HAC", cov_kwds={"maxlags": lags})
+        return float(res.tvalues[j])
+
+    xm = x.to_numpy().copy()
+    observed = t_of(xm)
+    rng = np.random.default_rng(seed)
+    column = xm[:, j].copy()
+    out = np.empty(reps)
+    for r in range(reps):
+        xm[:, j] = rng.permutation(column)
+        out[r] = t_of(xm)
+    return PermutationTest(observed, out, reps)

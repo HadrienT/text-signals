@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -155,3 +156,17 @@ def test_out_of_sample_starts_in_2000_and_compares_nested_models() -> None:
     summary, by_year = out_of_sample(table)
     assert by_year.index.min() == 2000
     assert summary["r2_full_vs_base"] > 0.3 and summary["clark_west_p"] < 0.01
+
+
+def test_previous_score_is_the_last_known_one() -> None:
+    from text_signals.sources.fomc.study import with_previous_score
+
+    t = pd.DataFrame(
+        {
+            "doc_id": ["a", "b", "c", "d"],
+            "release_date": ["2001-01-01", "2001-02-01", "2001-03-01", "2001-04-01"],
+            "llm_tone": [1.0, None, -1.0, 0.5],
+        }
+    )
+    prev = with_previous_score(t)["prev_llm_tone"].tolist()
+    assert np.isnan(prev[0]) and prev[1:] == [1.0, 1.0, -1.0]

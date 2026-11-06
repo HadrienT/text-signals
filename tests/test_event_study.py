@@ -142,3 +142,13 @@ def test_cumulative_gain_plot_writes_a_png(tmp_path) -> None:  # type: ignore[no
     path = tmp_path / "g.png"
     cumulative_gain_plot([2000, 2001, 2002], [1.0, 3.0, 2.0], str(path), title="t", ylabel="y")
     assert path.read_bytes()[:4] == b"\x89PNG"
+
+
+def test_permutation_test_separates_a_real_effect_from_none() -> None:
+    from text_signals.event_study import permutation_test
+
+    real = permutation_test(_data(0.3, n=200, seed=7), "y", ["score", "control"], "score", reps=199)
+    assert real.p == pytest.approx(1 / 200)  # no shuffle reaches the observed t
+    assert abs(float(np.mean(real.permuted_t))) < 0.5  # shuffled t centred on zero
+    none = permutation_test(_data(0.0, n=200, seed=8), "y", ["score", "control"], "score", reps=199)
+    assert none.p > 0.05

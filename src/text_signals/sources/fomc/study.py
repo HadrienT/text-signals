@@ -28,6 +28,7 @@ from text_signals.event_study import (
     fit,
     holm,
     oos_r2,
+    permutation_test,
     qq_plot,
     robustness,
 )
@@ -286,12 +287,57 @@ def out_of_sample(table: pd.DataFrame) -> tuple[dict[str, float], pd.DataFrame]:
     return summary, by_year
 
 
+PLACEBO_SEED = 20261106  # protocol §6.5
+
+
+def with_previous_score(table: pd.DataFrame) -> pd.DataFrame:
+    """Adds ``prev_llm_tone``: the most recent earlier statement's ``llm_tone`` (all statements,
+    release order), the score that was public before the release."""
+    t = table.sort_values(["release_date", "doc_id"]).reset_index(drop=True)
+    t["prev_llm_tone"] = t[SCORE].ffill().shift(1)
+    return t
+
+
+def placebos(table: pd.DataFrame, *, reps: int = 9_999) -> dict[str, float]:
+    """Protocol §6.5: permutation test of the score, and the previous statement's score."""
+    regs = [SCORE, CONTROL, *BASELINES]
+    perm = permutation_test(
+        primary_sample(table), OUTCOME, regs, SCORE, reps=reps, seed=PLACEBO_SEED
+    )
+    t = with_previous_score(table)
+    main = t[t["in_main_sample"].astype(bool)]
+    instead = main.dropna(subset=[OUTCOME, "prev_llm_tone", CONTROL, *BASELINES])
+    a = fit(instead, OUTCOME, ["prev_llm_tone", CONTROL, *BASELINES], ["prev_llm_tone"])
+    both = main.dropna(subset=[OUTCOME, SCORE, "prev_llm_tone", CONTROL, *BASELINES])
+    b = fit(both, OUTCOME, [SCORE, "prev_llm_tone", CONTROL, *BASELINES], ["prev_llm_tone"])
+    scores = t[SCORE]
+    return {
+        "perm_observed_t": perm.observed_t,
+        "perm_mean_t": float(np.mean(perm.permuted_t)),
+        "perm_sd_t": float(np.std(perm.permuted_t, ddof=1)),
+        "perm_p": perm.p,
+        "perm_reps": float(perm.reps),
+        "score_autocorrelation": float(scores.corr(scores.shift(1))),
+        "prev_instead_n": float(a.n),
+        "prev_instead_per_sd": a.coefficients["prev_llm_tone"].per_sd,
+        "prev_instead_p": a.wald_p,
+        "prev_next_to_current_per_sd": b.coefficients["prev_llm_tone"].per_sd,
+        "prev_next_to_current_p": b.wald_p,
+        "current_next_to_prev_per_sd": b.coefficients[SCORE].per_sd,
+        "current_next_to_prev_p": float(b.coefficients[SCORE].p),
+    }
+
+
 def main() -> None:
     import sys
 
     table = study_table(pd.read_csv(EVENTS), pd.read_csv(LLM_SCORES))
     if sys.argv[1:] == ["primary"]:
         print(describe(primary_test(table)))
+        return
+    if sys.argv[1:] == ["placebos"]:
+        for k, v in placebos(table).items():
+            print(f"{k}: {v:.4f}")
         return
     if sys.argv[1:] == ["oos"]:
         summary, by_year = out_of_sample(table)
