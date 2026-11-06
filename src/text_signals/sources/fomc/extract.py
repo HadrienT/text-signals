@@ -119,6 +119,18 @@ def draw_confirmation(events: pd.DataFrame, used: set[str]) -> pd.DataFrame:
     )
 
 
+def all_docs(statements: Path = STATEMENTS) -> list[SampleDoc]:
+    """Every statement, in release order, its document id as its code (the scoring run)."""
+    docs = [json.loads(line) for line in statements.read_text("utf-8").splitlines() if line]
+    return sorted(
+        (
+            SampleDoc(d["doc_id"], d["doc_id"], date.fromisoformat(d["release_date"]), d["text"])
+            for d in docs
+        ),
+        key=lambda d: (d.release_date, d.doc_id),
+    )
+
+
 def cache_path(model: str, out: Path = OUT) -> Path:
     slug = "".join(c if c.isalnum() or c in "-._" else "_" for c in model)
     return out / f"{slug}.jsonl"
@@ -335,6 +347,7 @@ def import_reference(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path, default=PLAN, help="which sample to run on")
+    parser.add_argument("--all", action="store_true", help="every statement, not a sample")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("draw-confirm")
     local = sub.add_parser("local")
@@ -360,7 +373,7 @@ def main() -> None:
         plan.to_csv(CONFIRM_PLAN, index=False)
         print(f"{len(plan)} statements written to {CONFIRM_PLAN}")
         return
-    docs = sample_docs(args.plan)
+    docs = all_docs() if args.all else sample_docs(args.plan)
     if args.cmd == "local":
         if args.numbered:
             records = run_local_numbered(args.base_url, docs)

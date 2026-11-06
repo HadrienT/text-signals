@@ -105,3 +105,16 @@ def test_import_keeps_the_records_of_another_sample(tmp_path: Path) -> None:
     import_reference(tmp_path, second, "claude-test", out=tmp_path / "out")  # read again
     lines = (tmp_path / "out" / "claude-test.jsonl").read_text().splitlines()
     assert sorted(json.loads(x)["doc_id"] for x in lines) == ["d1", "d9"]
+
+
+def test_all_docs_are_in_release_order(tmp_path: Path) -> None:
+    from text_signals.sources.fomc.extract import all_docs
+
+    rows = [
+        {"doc_id": "fomc-statement-20010103", "release_date": "2001-01-03", "text": "b"},
+        {"doc_id": "fomc-statement-19990202", "release_date": "1999-02-02", "text": "a"},
+    ]
+    path = tmp_path / "s.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    docs = all_docs(path)
+    assert [d.code for d in docs] == ["fomc-statement-19990202", "fomc-statement-20010103"]
