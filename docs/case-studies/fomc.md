@@ -843,6 +843,22 @@ Reading, test by test, with the primary test as the only basis of the conclusion
   only.
 - Out-of-sample R² against a zero forecast and against the baselines.
 
+**Details (made precise 2026-11-06, before the test was run).**
+
+- **Models.** *Full*: the primary regression (`llm_tone`, MP1, `lm_net_negative`,
+  `finbert_net_negative`). *Baseline*: the same without `llm_tone`. *Zero*: a forecast of 0 bp.
+  Every regressor is known at the release (MP1 is measured in the same window), so this is an
+  out-of-sample test of the **coefficients**: does a relation estimated on past statements only
+  fit the next ones?
+- **Window.** Primary sample (243 statements). The first forecast year is 2000, fitted on
+  1994–1999; then every 1 January the models are refitted on all earlier statements and predict
+  that year's statements. Coefficients never see the year they predict.
+- **Measures.** R²_OOS = 1 − Σ(y − ŷ_full)² / Σ(y − ŷ_bench)², against the zero forecast and
+  against the baseline model. The full model nests the baseline, so the comparison uses the
+  Clark–West (2007) adjusted MSPE test, one-sided (the full model is better), its standard error
+  HAC with the same lag rule. Reported, not part of the Holm family; the conclusion stays with the
+  primary test.
+
 ### 6.5 Placebos
 
 - Shuffled event dates: the score should explain nothing.
@@ -1294,6 +1310,9 @@ and the report.
   Market Effects of FOMC Communication: Evidence from a New Event-Study Database. *Federal
   Reserve Bank of San Francisco Working Paper* 2025-30, doi:10.24148/wp2025-30. Database:
   `https://sffed.us/usmpd`.
+- Clark, T. E. and West, K. D. (2007). Approximately Normal Tests for Equal Predictive
+  Accuracy in Nested Models. *Journal of Econometrics* 138(1), 291–311,
+  doi:10.1016/j.jeconom.2006.05.023.
 - Gürkaynak, R., Sack, B. and Swanson, E. (2005). Do Actions Speak Louder Than Words? The
   Response of Asset Prices to Monetary Policy Actions and Statements. *International Journal of
   Central Banking* 1(1), 55–93. MP2, target and path factors.
@@ -1369,3 +1388,4 @@ and the report.
 | 2026-11-06 | Robustness: HC3, block bootstrap, refit without 19 influential statements and Huber all keep β_LLM positive and significant (Huber 0.73 bp per SD) | the checks fixed in advance; no observation dropped from the primary estimate (§6.3) |
 | 2026-11-06 | Secondary tests listed (14) as one Holm family, before any was run | §6.3 named the kinds of test, not the exact list; fixing it first keeps the multiple-testing correction honest |
 | 2026-11-06 | Secondary tests run: 5 of 14 survive Holm; no effect on the daily ΔDGS2; much weaker on press conference days | reported in full; the conclusion rests on the primary test, limited to the 30-minute window (§6.3) |
+| 2026-11-06 | Out-of-sample test details fixed: full vs baseline vs zero, first forecast year 2000, yearly refits, Clark–West for the nested comparison | §6.4 left the start, the benchmark models and the test open; fixed before running |
