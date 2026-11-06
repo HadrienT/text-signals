@@ -955,6 +955,46 @@ statements a single κ is noisy, so a field below its bound is reported and look
 alone as a failure; two or more fields below their bound, or the correlation below 0.80, mean
 the choice is reopened.
 
+**Confirmation result (2026-11-06).** Phi-4 with the chosen procedure on the 30 new statements
+(`just extract-eval phi-4 claude-opus-5-5 --repairs 1 --plan
+data/labels/fomc_confirm_sample_v1.csv`; `--first` reads the same run at its first answer, which
+is what a single pass gives):
+
+| Phi-4, 30 new statements | Bound (from the 65) | Repair loop (chosen) | First answer (single pass) |
+|---|---|---|---|
+| Outputs failing validation | ≤ 1 | 1 | 0 |
+| Tone correlation with Claude | ≥ 0.80 | 0.84 | 0.86 |
+| κ forward guidance | 0.71 | **0.70** (23 both filled) | **0.62** (26 both filled) |
+| κ inflation | 0.68 | 0.81 | 0.86 |
+| κ labour market | 0.77 | 0.86 | 0.88 |
+| κ growth | 0.54 | 0.75 | 0.78 |
+| κ balance sheet | 0.78 | 0.86 | 0.85 |
+| Forward guidance: same presence as Claude | – | 83% | 90% |
+| Non-verbatim spans | – | 6 / 183 | 17 / 193 |
+| Decisions right in direction | – | 29 / 29 | 30 / 30 |
+
+By the criterion fixed before the run, the procedure is **confirmed**: no failed-validation
+excess, correlation above 0.80, one field (forward guidance, 0.70 against 0.71) below its bound,
+which the rule says to report and look at. Looking at it shows two things the 65 had hidden:
+
+- **The repair loop changes the reading here.** It moved 5 values on 30 statements (2 on the
+  65), three of them forward guidance set to null (C07, C17, C28), where the reference reads +2,
+  −2 and +2: told that a span is not verbatim, the model sometimes drops the value instead of
+  fixing the span, which the repair message allows ("If no passage … supports the value, set
+  the value and its evidence to null"). In one statement (29 April 2020) it nulled values but
+  kept their evidence, and a valid first answer became an invalid one.
+- **κ on the documents both readers filled rewards leaving hard cases empty.** The repair's
+  forward-guidance κ (0.70) is higher than the first answer's (0.62) partly because the values
+  it dropped were disagreements; its presence agreement fell from 90% to 83%. κ and presence
+  must be read together.
+- **Forward guidance is weaker out of sample.** 0.62 to 0.70 on the 30 against 0.84 on the 65,
+  on which the procedure was chosen; part of the gap is the noise of 30 statements, part is the
+  optimism of choosing on the sample one reports. The other four fields hold.
+
+C07 and C28 also show the size problem again: the text gives only the new range after a 75 bp
+raise; Phi-4 writes +25, Claude leaves it empty. `change_bp` is a quality check only (§5.2) and
+stays so.
+
 **Selection on the evaluation sample.** Prompt v2, the repair loop and schema v2 were all
 judged on the same 65 statements. Whichever variant is chosen must be confirmed on statements
 outside the sample, with the reference reading them blind as before.
@@ -1120,3 +1160,4 @@ and the report.
 | 2026-11-06 | Procedure chosen: free copy with the repair loop, Phi-4 | best scores for the regression; repair lowers non-verbatim spans without moving the values (§6.6) |
 | 2026-11-06 | Claude replaces the local model only on checks that see no market data | the reference cannot judge itself and the regression must not choose the reader (§6.6) |
 | 2026-11-06 | Confirmation sample of 30 new statements and its pass criterion, fixed before the run | the procedure was chosen on the 65 (§6.6) |
+| 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
