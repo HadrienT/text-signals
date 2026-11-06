@@ -1,0 +1,20 @@
+{
+  "code": "P5",
+  "pass": "practice",
+  "labelled_at": "2026-11-06T14:38:15.149361Z",
+  "guide_version": "fomc-label-guide-v1",
+  "schema_version": "fomc-statement-v1",
+  "policy_action": "raise",
+  "change_bp": 25,
+  "forward_guidance": -1,
+  "inflation_assessment": 0,
+  "labor_market_assessment": 2,
+  "growth_assessment": 2,
+  "balance_sheet": null,
+  "risk_balance": "balanced",
+  "dissents_tighter": 0,
+  "dissents_easier": 0,
+  "dissents_other": 0,
+  "unsure": [],
+  "notes": ""
+}

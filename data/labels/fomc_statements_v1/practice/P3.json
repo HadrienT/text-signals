@@ -1,0 +1,20 @@
+{
+  "code": "P3",
+  "pass": "practice",
+  "labelled_at": "2026-11-06T14:25:27.311542Z",
+  "guide_version": "fomc-label-guide-v1",
+  "schema_version": "fomc-statement-v1",
+  "policy_action": "hold",
+  "change_bp": 0,
+  "forward_guidance": -1,
+  "inflation_assessment": 1,
+  "labor_market_assessment": -1,
+  "growth_assessment": 1,
+  "balance_sheet": null,
+  "risk_balance": "balanced",
+  "dissents_tighter": 1,
+  "dissents_easier": 0,
+  "dissents_other": 0,
+  "unsure": [],
+  "notes": ""
+}
