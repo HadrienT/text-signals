@@ -43,3 +43,31 @@ def test_three_part_names_are_removed_whole() -> None:
     )
     out = anonymise(vote, member_names([vote]))
     assert "Raskin" not in out and "Bloom" not in out and "Stein" not in out
+
+
+def test_cutoff_split_finds_a_change_in_the_effect() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import cutoff_split
+
+    rng = np.random.default_rng(9)
+    n = 200
+    after = np.arange(n) >= 150
+    tone = rng.normal(0, 1, n)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("1994-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": tone,
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+            "llm_after_cutoff": after,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = np.where(after, 4.0, 0.0) * tone + rng.normal(0, 1, n)
+    r = cutoff_split(table)
+    assert r["n_after"] == 50 and r["interaction_p"] < 0.01
+    assert r["beta_after_per_sd"] > r["beta_before_per_sd"] + 2

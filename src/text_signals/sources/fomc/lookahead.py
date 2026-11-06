@@ -21,10 +21,18 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 
+import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
-from text_signals.llm import Decoding, ExtractionRecord, LLMClient, Prompt, extract_all
-from text_signals.sources.fomc.extract import SampleDoc, all_docs, run_local
+from text_signals.llm import (
+    Decoding,
+    ExtractionRecord,
+    LLMClient,
+    Prompt,
+    extract_all,
+    read_cache,
+)
+from text_signals.sources.fomc.extract import SampleDoc, all_docs, cache_path, run_local
 
 MONTHS = "January|February|March|April|June|July|August|September|October|November|December"
 _NAME = r"[A-Z][a-z]+(?: [A-Z]\.)?(?: [A-Z][a-z]*[A-Z]?[a-z]+(?:-[A-Z][a-z]+)?)+"
@@ -89,6 +97,7 @@ DATE_PROBE_V1 = Prompt(
 )
 
 OUT = Path("data/interim/fomc/lookahead")
+MODEL = "phi-4"
 
 
 def anonymised_docs() -> list[SampleDoc]:
@@ -130,9 +139,124 @@ def run_probe(base_url: str) -> list[ExtractionRecord]:
     )
 
 
+def cutoff_split(table: pd.DataFrame) -> dict[str, float]:
+    """β of ``llm_tone`` before and after the training cutoff, and the HAC test that they are
+    equal (an interaction in the primary regression)."""
+    from text_signals.event_study import fit
+    from text_signals.sources.fomc import study
+
+    sample = study.primary_sample(table).copy()
+    sample["after"] = sample["llm_after_cutoff"].astype(bool).astype(float)
+    sample["tone_x_after"] = sample[study.SCORE] * sample["after"]
+    regs = [study.SCORE, "tone_x_after", "after", study.CONTROL, *study.BASELINES]
+    pooled = fit(sample, study.OUTCOME, regs, ["tone_x_after"])
+    base = [study.SCORE, study.CONTROL, *study.BASELINES]
+    before = fit(sample[sample["after"] == 0], study.OUTCOME, base, [study.SCORE])
+    after = fit(sample[sample["after"] == 1], study.OUTCOME, base, [study.SCORE])
+    sd = float(sample[study.SCORE].std(ddof=1))
+    b, a = before.coefficients[study.SCORE], after.coefficients[study.SCORE]
+    return {
+        "n_before": float(before.n),
+        "n_after": float(after.n),
+        "beta_before_per_sd": b.beta * sd,
+        "se_before_per_sd": b.se * sd,
+        "beta_after_per_sd": a.beta * sd,
+        "se_after_per_sd": a.se * sd,
+        "interaction_per_sd": pooled.coefficients["tone_x_after"].beta * sd,
+        "interaction_p": pooled.wald_p,
+    }
+
+
+def oos_gain_after_cutoff(table: pd.DataFrame) -> tuple[float, int]:
+    """Σ (baseline − full) out-of-sample squared errors over the statements after the cutoff."""
+    from text_signals.event_study import expanding_forecasts
+    from text_signals.sources.fomc import study
+
+    sample = study.primary_sample(table).reset_index(drop=True)
+    years = pd.to_datetime(sample["release_date"]).dt.year
+    full = expanding_forecasts(
+        sample,
+        study.OUTCOME,
+        [study.SCORE, study.CONTROL, *study.BASELINES],
+        years,
+        study.FIRST_OOS_YEAR,
+    )
+    base = expanding_forecasts(
+        sample, study.OUTCOME, [study.CONTROL, *study.BASELINES], years, study.FIRST_OOS_YEAR
+    )
+    after = sample["llm_after_cutoff"].astype(bool).to_numpy()
+    y = sample[study.OUTCOME].to_numpy(dtype=float)
+    gain = (y - base.to_numpy()) ** 2 - (y - full.to_numpy()) ** 2
+    return float(gain[after].sum()), int(after.sum())
+
+
+def anonymised_scores() -> pd.DataFrame:
+    """``llm_tone`` of the anonymised texts, by document."""
+    from text_signals.sources.fomc.extraction import StatementExtraction, tone_score
+
+    rows = []
+    for r in read_cache(cache_path(MODEL, OUT / "anonymised")).values():
+        if r.procedure != "single-pass" or r.output is None:
+            continue
+        rows.append(
+            {
+                "doc_id": r.doc_id,
+                "anon_tone": tone_score(StatementExtraction.model_validate(r.output)),
+            }
+        )
+    return pd.DataFrame(rows).drop_duplicates("doc_id")
+
+
+def anonymisation_effect(table: pd.DataFrame) -> dict[str, float]:
+    from text_signals.event_study import fit
+    from text_signals.sources.fomc import study
+
+    t = table.merge(anonymised_scores(), on="doc_id", how="left")
+    both = t.dropna(subset=["llm_tone", "anon_tone"])
+    sample = study.primary_sample(t).dropna(subset=["anon_tone"])
+    regs = ["anon_tone", study.CONTROL, *study.BASELINES]
+    r = fit(sample, study.OUTCOME, regs, ["anon_tone"])
+    orig = fit(sample, study.OUTCOME, [study.SCORE, study.CONTROL, *study.BASELINES], [study.SCORE])
+    return {
+        "n_compared": float(len(both)),
+        "correlation": float(both["llm_tone"].corr(both["anon_tone"])),
+        "mean_change": float((both["anon_tone"] - both["llm_tone"]).mean()),
+        "share_changed": float(((both["anon_tone"] - both["llm_tone"]).abs() > 1e-9).mean()),
+        "n_regression": float(r.n),
+        "beta_anon_per_sd": r.coefficients["anon_tone"].per_sd,
+        "p_anon": r.wald_p,
+        "beta_orig_same_sample_per_sd": orig.coefficients[study.SCORE].per_sd,
+        "p_orig_same_sample": orig.wald_p,
+    }
+
+
+def date_probe(table: pd.DataFrame) -> dict[str, float]:
+    rows = []
+    for r in read_cache(OUT / "date_probe" / f"{MODEL}.jsonl").values():
+        if r.output is not None:
+            rows.append({"doc_id": r.doc_id, "guess": int(r.output["year"])})
+    guesses = pd.DataFrame(rows).drop_duplicates("doc_id")
+    t = table.merge(guesses, on="doc_id")
+    year = pd.to_datetime(t["release_date"]).dt.year
+    err = (t["guess"] - year).abs()
+    naive = (year - int(year.median())).abs()
+    after = t["llm_after_cutoff"].astype(bool)
+    return {
+        "n": float(len(t)),
+        "mae_years": float(err.mean()),
+        "within_one_year": float((err <= 1).mean()),
+        "exact_year": float((err == 0).mean()),
+        "naive_mae_years": float(naive.mean()),
+        "naive_within_one_year": float((naive <= 1).mean()),
+        "mae_before_cutoff": float(err[~after].mean()),
+        "mae_after_cutoff": float(err[after].mean()),
+        "n_after_cutoff": float(after.sum()),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["anonymised-run", "probe-run", "show"])
+    parser.add_argument("cmd", choices=["anonymised-run", "probe-run", "show", "report"])
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
     if args.cmd == "anonymised-run":
@@ -141,6 +265,21 @@ def main() -> None:
     elif args.cmd == "probe-run":
         records = run_probe(args.base_url)
         print(f"{len(records)} records, {sum(r.error is not None for r in records)} invalid")
+    elif args.cmd == "report":
+        from text_signals.sources.fomc import study
+
+        table = study.study_table(pd.read_csv(study.EVENTS), pd.read_csv(study.LLM_SCORES))
+        gain, n_after = oos_gain_after_cutoff(table)
+        sections = {
+            "cutoff split": cutoff_split(table),
+            "out-of-sample gain after the cutoff": {"gain_bp2": gain, "n": float(n_after)},
+            "anonymisation": anonymisation_effect(table),
+            "date probe": date_probe(table),
+        }
+        for title, values in sections.items():
+            print(f"## {title}")
+            for k, v in values.items():
+                print(f"{k}: {v:.4f}")
     else:
         docs = anonymised_docs()
         print(len(member_names(d.text for d in all_docs())), "member names")
