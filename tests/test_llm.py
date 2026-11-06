@@ -114,3 +114,89 @@ def test_prompt_v2_carries_the_field_definitions() -> None:
     system = STATEMENT_V2.messages("x")[0]["content"]
     assert system.startswith(STATEMENT_V1.system)
     assert "further firming or gradual increases may be needed" in system
+
+
+def _scripted(contents: list[str], seen: list[dict[str, object]]) -> httpx.Client:
+    """A server that answers each chat request with the next content in ``contents``."""
+    answers = iter(contents)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "model": "test-model",
+                "choices": [{"message": {"content": next(answers)}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 10},
+            },
+        )
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _repair(client: LLMClient, text: str, max_repairs: int = 1) -> ExtractionRecord:
+    from text_signals.sources.fomc.extraction import evidence_problems
+    from text_signals.sources.fomc.prompts import REPAIR_V1
+
+    return client.extract_with_repair(
+        doc_id="d1",
+        text=text,
+        prompt=STATEMENT_V1,
+        repair=REPAIR_V1,
+        verify=evidence_problems,
+        max_repairs=max_repairs,
+        schema=StatementExtraction,
+        schema_version=SCHEMA_VERSION,
+        decoding=Decoding(),
+        model="test-model",
+        model_path=None,
+    )
+
+
+TEXT = "The Committee decided to maintain the target. Inflation remains elevated."
+STITCHED = dict(VALID, inflation_assessment={"value": 1, "evidence": "maintain ... elevated"})
+
+
+def test_repair_sends_the_problems_back_and_keeps_both_answers() -> None:
+    seen: list[dict[str, object]] = []
+    client = LLMClient(
+        "http://llm", client=_scripted([json.dumps(STITCHED), json.dumps(VALID)], seen)
+    )
+    record = _repair(client, TEXT)
+    assert len(seen) == 2
+    second = seen[1]["messages"]
+    assert isinstance(second, list) and [m["role"] for m in second] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert second[2]["content"] == json.dumps(STITCHED)  # the history is resent
+    assert '"maintain ... elevated"' in second[3]["content"]
+    assert record.output is not None and record.problems_left == []
+    assert len(record.rejected) == 1 and record.rejected[0].raw_output == json.dumps(STITCHED)
+    assert record.procedure == "repair-1:fomc-repair-v1"
+    assert (record.prompt_tokens, record.completion_tokens) == (200, 20)  # summed
+
+
+def test_repair_stops_after_max_repairs_and_reports_what_is_left() -> None:
+    seen: list[dict[str, object]] = []
+    client = LLMClient("http://llm", client=_scripted([json.dumps(STITCHED)] * 3, seen))
+    record = _repair(client, TEXT, max_repairs=1)
+    assert len(seen) == 2
+    assert len(record.problems_left) == 1 and "inflation_assessment" in record.problems_left[0]
+
+
+def test_an_accepted_first_answer_makes_one_request() -> None:
+    seen: list[dict[str, object]] = []
+    client = LLMClient("http://llm", client=_scripted([json.dumps(VALID)], seen))
+    record = _repair(client, TEXT)
+    assert len(seen) == 1 and record.rejected == []
+
+
+def test_records_cached_before_the_repair_loop_read_as_single_pass() -> None:
+    record = _extract(LLMClient("http://llm", client=_server(json.dumps(VALID), [])))
+    old = record.model_dump(mode="json")
+    for key in ("procedure", "rejected", "problems_left"):
+        old.pop(key)
+    assert ExtractionRecord.model_validate(old).procedure == "single-pass"

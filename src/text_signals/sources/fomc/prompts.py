@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from text_signals.llm import Prompt
+from text_signals.llm import Prompt, RepairPrompt
 
 STATEMENT_V1 = Prompt(
     version="fomc-statement-prompt-v1",
@@ -53,4 +53,19 @@ STATEMENT_V2 = Prompt(
         "definition: follow it.\n\n" + _schema_text()
     ),
     user_template=STATEMENT_V1.user_template,
+)
+
+
+# The message of the repair loop (protocol §6.6). It names each problem the verifier found and
+# asks for the whole form again, changing nothing else, so that a repair can be measured as a
+# repair: how many spans it fixed, and how many values it moved.
+REPAIR_V1 = RepairPrompt(
+    version="fomc-repair-v1",
+    template=(
+        "Your answer has these problems:\n{problems}\n\n"
+        "Return the whole form again as JSON. For each field above, copy the evidence exactly "
+        "as it is written in the statement: one sentence or part of one, without '...' and "
+        "without joining parts of different sentences. If no passage of the statement "
+        "supports the value, set the value and its evidence to null. Change nothing else."
+    ),
 )

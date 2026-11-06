@@ -7,8 +7,16 @@ JSON object constrained by the schema of a Pydantic model (``response_format`` o
 Every result is an ``ExtractionRecord``: the raw output as returned, the parsed object (or the
 validation error), the model as reported by the server, the prompt and schema versions, the
 decoding parameters, the token counts and the latency. Records are appended to a JSONL cache
-keyed by (text sha256, model, prompt version, schema version), so that a long run can stop and
-resume, and a rerun makes no request.
+keyed by (text sha256, model, prompt version, schema version, procedure), so that a long run can
+stop and resume, and a rerun makes no request.
+
+**Repair loop** (``extract_with_repair``). One request is a *single pass*: the model answers once
+and the answer is kept as it is. With a repair loop, a *verifier* (plain code, no model) checks
+the answer; if it finds problems, they are sent back to the model as a new user turn in the same
+conversation (the model keeps no memory, so the whole history is resent), and the model answers
+again. This is the basic shape of an LLM environment: act, verify, feed the verdict back. Every
+attempt is stored, so the first answer and the repaired one can both be measured, together with
+what the repair cost in latency and tokens.
 """
 
 from __future__ import annotations
@@ -44,6 +52,16 @@ class Prompt(BaseModel):
         ]
 
 
+class Attempt(BaseModel):
+    """One answer of the model that the verifier rejected, and what it was told."""
+
+    raw_output: str
+    problems: list[str]  # what the verifier found, as sent back to the model
+    latency_s: float
+    prompt_tokens: int | None
+    completion_tokens: int | None
+
+
 class ExtractionRecord(BaseModel):
     doc_id: str
     text_sha256: str
@@ -59,14 +77,46 @@ class ExtractionRecord(BaseModel):
     raw_output: str
     output: dict[str, Any] | None  # the validated object, as JSON
     error: str | None  # why the raw output was rejected
+    # "single-pass", or "repair-<n>[:<repair prompt version>]" for at most n repair turns
+    procedure: str = "single-pass"
+    # earlier answers rejected by the verifier, in order; the fields above are the last answer
+    rejected: list[Attempt] = []
+    problems_left: list[str] = []  # what the verifier still found in the last answer
 
     @property
-    def cache_key(self) -> tuple[str, str, str, str]:
-        return (self.text_sha256, self.model, self.prompt_version, self.schema_version)
+    def cache_key(self) -> tuple[str, str, str, str, str]:
+        return (
+            self.text_sha256,
+            self.model,
+            self.prompt_version,
+            self.schema_version,
+            self.procedure,
+        )
 
 
 def text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class RepairPrompt(BaseModel):
+    """A versioned message that sends the verifier's problems back to the model."""
+
+    version: str
+    template: str  # with ``{problems}``, one problem per line
+
+    def message(self, problems: list[str]) -> str:
+        return self.template.format(problems="\n".join(f"- {p}" for p in problems))
+
+
+def repair_procedure(max_repairs: int, repair: RepairPrompt) -> str:
+    return f"repair-{max_repairs}:{repair.version}"
+
+
+def _parse(raw: str, schema: type[BaseModel]) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        return schema.model_validate_json(raw).model_dump(mode="json"), None
+    except ValidationError as exc:
+        return None, str(exc)
 
 
 class LLMClient:
@@ -87,21 +137,17 @@ class LLMClient:
             path = None
         return name, None if path is None else str(path)
 
-    def extract(
+    def _request(
         self,
-        *,
-        doc_id: str,
-        text: str,
-        prompt: Prompt,
+        messages: list[dict[str, str]],
         schema: type[BaseModel],
-        schema_version: str,
         decoding: Decoding,
         model: str,
-        model_path: str | None,
-    ) -> ExtractionRecord:
+    ) -> tuple[str, float, dict[str, Any], str]:
+        """One chat completion constrained by ``schema``: (raw text, latency, usage, model)."""
         body = {
             "model": model,
-            "messages": prompt.messages(text),
+            "messages": messages,
             "temperature": decoding.temperature,
             "seed": decoding.seed,
             "max_tokens": decoding.max_tokens,
@@ -120,17 +166,27 @@ class LLMClient:
         latency = time.monotonic() - start
         payload = response.json()
         raw = str(payload["choices"][0]["message"]["content"])
-        usage = payload.get("usage") or {}
-        output: dict[str, Any] | None = None
-        error: str | None = None
-        try:
-            output = schema.model_validate_json(raw).model_dump(mode="json")
-        except ValidationError as exc:
-            error = str(exc)
+        return raw, latency, payload.get("usage") or {}, str(payload.get("model") or model)
+
+    def extract(
+        self,
+        *,
+        doc_id: str,
+        text: str,
+        prompt: Prompt,
+        schema: type[BaseModel],
+        schema_version: str,
+        decoding: Decoding,
+        model: str,
+        model_path: str | None,
+    ) -> ExtractionRecord:
+        """A single pass: one request, the answer kept as it is."""
+        raw, latency, usage, served = self._request(prompt.messages(text), schema, decoding, model)
+        output, error = _parse(raw, schema)
         return ExtractionRecord(
             doc_id=doc_id,
             text_sha256=text_sha256(text),
-            model=str(payload.get("model") or model),
+            model=served,
             model_path=model_path,
             prompt_version=prompt.version,
             schema_version=schema_version,
@@ -144,11 +200,82 @@ class LLMClient:
             error=error,
         )
 
+    def extract_with_repair(
+        self,
+        *,
+        doc_id: str,
+        text: str,
+        prompt: Prompt,
+        repair: RepairPrompt,
+        verify: Callable[[BaseModel, str], list[str]],
+        max_repairs: int,
+        schema: type[BaseModel],
+        schema_version: str,
+        decoding: Decoding,
+        model: str,
+        model_path: str | None,
+    ) -> ExtractionRecord:
+        """Answer, verify, and send the problems back, at most ``max_repairs`` times.
+
+        ``verify(parsed, text)`` returns the problems of a valid answer (empty when it is
+        accepted). An answer that fails schema validation counts as a problem too. The record
+        holds the last answer; earlier ones are in ``rejected``. Latency and tokens are summed
+        over all turns, since that is what the answer cost.
+        """
+        messages = prompt.messages(text)
+        rejected: list[Attempt] = []
+        total_latency, total_in, total_out = 0.0, 0, 0
+        while True:
+            raw, latency, usage, served = self._request(messages, schema, decoding, model)
+            total_latency += latency
+            total_in += int(usage.get("prompt_tokens") or 0)
+            total_out += int(usage.get("completion_tokens") or 0)
+            output, error = _parse(raw, schema)
+            if error is not None:
+                problems = [f"The answer does not follow the schema: {error}"]
+            else:
+                problems = verify(schema.model_validate(output), text)
+            if not problems or len(rejected) == max_repairs:
+                break
+            rejected.append(
+                Attempt(
+                    raw_output=raw,
+                    problems=problems,
+                    latency_s=latency,
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                )
+            )
+            messages = [
+                *messages,
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": repair.message(problems)},
+            ]
+        return ExtractionRecord(
+            doc_id=doc_id,
+            text_sha256=text_sha256(text),
+            model=served,
+            model_path=model_path,
+            prompt_version=prompt.version,
+            schema_version=schema_version,
+            decoding=decoding,
+            created_at=datetime.now(UTC),
+            latency_s=total_latency,
+            prompt_tokens=total_in,
+            completion_tokens=total_out,
+            raw_output=raw,
+            output=output,
+            error=error,
+            procedure=repair_procedure(max_repairs, repair),
+            rejected=rejected,
+            problems_left=problems,
+        )
+
     def close(self) -> None:
         self._client.close()
 
 
-def read_cache(path: Path) -> dict[tuple[str, str, str, str], ExtractionRecord]:
+def read_cache(path: Path) -> dict[tuple[str, str, str, str, str], ExtractionRecord]:
     if not path.exists():
         return {}
     records = (
@@ -167,6 +294,7 @@ def extract_all(
     prompt_version: str,
     schema_version: str,
     cache_path: Path,
+    procedure: str = "single-pass",
     on_record: Callable[[ExtractionRecord, bool], None] | None = None,
 ) -> list[ExtractionRecord]:
     """Extract every ``(doc_id, text)``, appending each new record to the cache as it comes.
@@ -179,7 +307,7 @@ def extract_all(
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     out = []
     for doc_id, text in docs:
-        key = (text_sha256(text), model, prompt_version, schema_version)
+        key = (text_sha256(text), model, prompt_version, schema_version, procedure)
         record = cache.get(key)
         from_cache = record is not None
         if record is None:

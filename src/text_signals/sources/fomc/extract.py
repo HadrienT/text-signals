@@ -25,11 +25,23 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
-from text_signals.llm import Decoding, ExtractionRecord, LLMClient, extract_all, text_sha256
-from text_signals.sources.fomc.extraction import SCHEMA_VERSION, StatementExtraction
-from text_signals.sources.fomc.prompts import STATEMENT_V2
+from text_signals.llm import (
+    Decoding,
+    ExtractionRecord,
+    LLMClient,
+    extract_all,
+    repair_procedure,
+    text_sha256,
+)
+from text_signals.sources.fomc.extraction import (
+    SCHEMA_VERSION,
+    StatementExtraction,
+    evidence_problems,
+)
+from text_signals.sources.fomc.prompts import REPAIR_V1, STATEMENT_V2
 
 PROMPT = STATEMENT_V2
+REPAIR = REPAIR_V1
 PLAN = Path("data/labels/fomc_statements_sample_v1.csv")
 STATEMENTS = Path("data/interim/fomc/statements.jsonl")
 OUT = Path("data/interim/fomc/extractions")
@@ -62,17 +74,38 @@ def sample_docs(plan: Path = PLAN, statements: Path = STATEMENTS) -> list[Sample
     ]
 
 
+def procedure(max_repairs: int) -> str:
+    return "single-pass" if max_repairs == 0 else repair_procedure(max_repairs, REPAIR)
+
+
 def cache_path(model: str, out: Path = OUT) -> Path:
     slug = "".join(c if c.isalnum() or c in "-._" else "_" for c in model)
     return out / f"{slug}.jsonl"
 
 
-def run_local(base_url: str, docs: list[SampleDoc], out: Path = OUT) -> list[ExtractionRecord]:
+def run_local(
+    base_url: str, docs: list[SampleDoc], out: Path = OUT, *, max_repairs: int = 0
+) -> list[ExtractionRecord]:
+    """Extract every sample statement; with ``max_repairs`` > 0, through the repair loop."""
     client = LLMClient(base_url)
     model, model_path = client.model_info()
     decoding = Decoding()
 
     def run(doc_id: str, text: str) -> ExtractionRecord:
+        if max_repairs:
+            return client.extract_with_repair(
+                doc_id=doc_id,
+                text=text,
+                prompt=PROMPT,
+                repair=REPAIR,
+                verify=evidence_problems,
+                max_repairs=max_repairs,
+                schema=StatementExtraction,
+                schema_version=SCHEMA_VERSION,
+                decoding=decoding,
+                model=model,
+                model_path=model_path,
+            )
         return client.extract(
             doc_id=doc_id,
             text=text,
@@ -88,6 +121,8 @@ def run_local(base_url: str, docs: list[SampleDoc], out: Path = OUT) -> list[Ext
 
     def log(record: ExtractionRecord, cached: bool) -> None:
         status = "ok" if record.error is None else "INVALID"
+        if record.rejected:
+            status += f" after {len(record.rejected)} repair(s), {len(record.problems_left)} left"
         print(
             f"{record.doc_id} {status}{' (cache)' if cached else ''} "
             f"{record.latency_s or 0:.1f}s  [{time.monotonic() - started:.0f}s]",
@@ -101,6 +136,7 @@ def run_local(base_url: str, docs: list[SampleDoc], out: Path = OUT) -> list[Ext
         prompt_version=PROMPT.version,
         schema_version=SCHEMA_VERSION,
         cache_path=cache_path(model, out),
+        procedure=procedure(max_repairs),
         on_record=log,
     )
 
@@ -161,6 +197,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     local = sub.add_parser("local")
     local.add_argument("--base-url", default="http://127.0.0.1:8000")
+    local.add_argument(
+        "--repairs", type=int, default=0, help="repair turns when the verifier finds a problem"
+    )
     blind = sub.add_parser("blind-inputs")
     blind.add_argument("directory", type=Path)
     imp = sub.add_parser("import")
@@ -169,7 +208,7 @@ def main() -> None:
     args = parser.parse_args()
     docs = sample_docs()
     if args.cmd == "local":
-        records = run_local(args.base_url, docs)
+        records = run_local(args.base_url, docs, max_repairs=args.repairs)
     elif args.cmd == "blind-inputs":
         write_blind_inputs(docs, args.directory)
         print(f"{len(docs)} statements written to {args.directory}")

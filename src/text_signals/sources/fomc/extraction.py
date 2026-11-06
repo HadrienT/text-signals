@@ -192,6 +192,21 @@ def evidence_not_in_text(extraction: StatementExtraction, text: str) -> list[str
     ]
 
 
+def evidence_problems(extraction: BaseModel, text: str) -> list[str]:
+    """The verifier of the repair loop: one message per evidence span not found in ``text``.
+
+    The messages are sent back to the model as they are, so they quote the span and say what is
+    wrong in plain words.
+    """
+    if not isinstance(extraction, StatementExtraction):
+        raise TypeError("expected a StatementExtraction")
+    spans = evidence_spans(extraction)
+    return [
+        f'{name}: the evidence "{spans[name]}" does not appear word for word in the statement.'
+        for name in evidence_not_in_text(extraction, text)
+    ]
+
+
 # The aggregate scores (protocol §5.2, fixed 2026-11-06 before any model output was seen).
 STANCE_FIELDS = (
     "forward_guidance",

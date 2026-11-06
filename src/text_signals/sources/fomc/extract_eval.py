@@ -28,7 +28,13 @@ from text_signals.evaluation import FieldAgreement, field_agreement
 from text_signals.fetch import Fetcher
 from text_signals.llm import ExtractionRecord, read_cache
 from text_signals.market import fetch_fred_series
-from text_signals.sources.fomc.extract import PROMPT, SampleDoc, cache_path, sample_docs
+from text_signals.sources.fomc.extract import (
+    PROMPT,
+    SampleDoc,
+    cache_path,
+    procedure,
+    sample_docs,
+)
 from text_signals.sources.fomc.extraction import (
     SCHEMA_VERSION,
     STANCE_FIELDS,
@@ -79,8 +85,10 @@ def flat(extraction: StatementExtraction) -> dict[str, Any]:
     return row
 
 
-def load_reader(model: str, docs: Sequence[SampleDoc]) -> dict[str, ExtractionRecord]:
-    """The records of one reader for the sample, with the current prompt and schema."""
+def load_reader(
+    model: str, docs: Sequence[SampleDoc], proc: str = "single-pass"
+) -> dict[str, ExtractionRecord]:
+    """The records of one reader for the sample, with the current prompt, schema and procedure."""
     cache = read_cache(cache_path(model))
     wanted = {d.doc_id for d in docs}
     return {
@@ -89,6 +97,7 @@ def load_reader(model: str, docs: Sequence[SampleDoc]) -> dict[str, ExtractionRe
         if r.doc_id in wanted
         and r.prompt_version == PROMPT.version
         and r.schema_version == SCHEMA_VERSION
+        and r.procedure == proc
     }
 
 
@@ -104,6 +113,15 @@ def reader_table(records: dict[str, ExtractionRecord], docs: Sequence[SampleDoc]
             row["n_evidence"] = len(ext.dissents) + sum(
                 getattr(ext, f).evidence is not None for f in (*ORDINAL, *CATEGORICAL)
             )
+        if rec is not None and rec.rejected:
+            row["n_repairs"] = len(rec.rejected)
+            row["first_problems"] = len(rec.rejected[0].problems)
+            row["problems_left"] = len(rec.problems_left)
+            first = StatementExtraction.model_validate_json(rec.rejected[0].raw_output)
+            if row["valid"]:
+                before, after = flat(first), flat(StatementExtraction.model_validate(rec.output))
+                moved = [f for f in (*ORDINAL, *CATEGORICAL) if before[f] != after[f]]
+                row["values_moved"] = ",".join(moved)
         if rec is not None:
             row |= {
                 "latency_s": rec.latency_s,
@@ -139,7 +157,10 @@ def _num(x: float | None) -> str:
     return "–" if x is None else f"{x:.2f}"
 
 
-def report(model: str, reference: str | None, data_dir: Path = Path("data")) -> str:
+def report(
+    model: str, reference: str | None, data_dir: Path = Path("data"), *, repairs: int = 0
+) -> str:
+    """``model`` is read with ``repairs`` repair turns (0: single pass); the reference, single."""
     docs = sample_docs()
     with Fetcher(data_dir / "raw", delay_s=2.0) as fetcher:
         target = policy_target(
@@ -153,10 +174,14 @@ def report(model: str, reference: str | None, data_dir: Path = Path("data")) -> 
 
     lines: list[str] = []
     tables = {}
-    for name in [model] + ([reference] if reference else []):
-        t = reader_table(load_reader(name, docs), docs).merge(truth, on="code")
+    readers = [(model, procedure(repairs))] + ([(reference, "single-pass")] if reference else [])
+    for name, proc in readers:
+        t = reader_table(load_reader(name, docs, proc), docs).merge(truth, on="code")
         tables[name] = t
-        out = data_dir / "processed" / "fomc" / f"extraction_eval_{cache_path(name).stem}.csv"
+        suffix = "" if proc == "single-pass" else f"_repair{repairs}"
+        out = (
+            data_dir / "processed" / "fomc" / f"extraction_eval_{cache_path(name).stem}{suffix}.csv"
+        )
         out.parent.mkdir(parents=True, exist_ok=True)
         t.to_csv(out, index=False)
         valid = t[t["valid"]]
@@ -174,7 +199,7 @@ def report(model: str, reference: str | None, data_dir: Path = Path("data")) -> 
             .sum()
         )
         lines += [
-            f"### {name}",
+            f"### {name} ({proc})",
             "",
             f"- outputs: {len(t)} statements, {int((~t['valid']).sum())} failed validation",
             f"- decision vs FRED target: {hold_ok.sum()}/{len(decided)} right direction, "
@@ -186,6 +211,17 @@ def report(model: str, reference: str | None, data_dir: Path = Path("data")) -> 
                 f"- latency {t['latency_s'].median():.1f} s median; tokens "
                 f"{t['prompt_tokens'].median():.0f} in, {t['completion_tokens'].median():.0f} "
                 "out (median)"
+            )
+        if "n_repairs" in t:
+            rep = t[t["n_repairs"].notna()]
+            moved = (
+                rep["values_moved"].fillna("").map(lambda x: len([v for v in x.split(",") if v]))
+            )
+            lines.append(
+                f"- repair loop: {len(rep)} statements sent back; spans flagged on the first "
+                f"answer {int(rep['first_problems'].sum())}, left after repair "
+                f"{int(rep['problems_left'].sum())}; field values changed by the repair "
+                f"{int(moved.sum())}"
             )
         wrong = decided[~(hold_ok & size_ok)]
         for r in wrong.itertuples():
@@ -223,8 +259,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model")
     parser.add_argument("reference", nargs="?")
+    parser.add_argument("--repairs", type=int, default=0)
     args = parser.parse_args()
-    print(report(args.model, args.reference))
+    print(report(args.model, args.reference, repairs=args.repairs))
 
 
 if __name__ == "__main__":

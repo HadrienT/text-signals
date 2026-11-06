@@ -729,6 +729,9 @@ output on the sample had been seen when this was decided. The five practice labe
   same prompt (v2) and schema; `extract.py import` validates them and stores them as
   `ExtractionRecord` (decoding and latency unknown, so null). The readers' own notes on the
   fields they were unsure of are kept with the run.
+- **The reference had a verifier.** The Claude readers checked their own spans by script and
+  corrected them before handing in, which a single-pass local model cannot do; the repair loop
+  below gives the local model the same step.
 - **What the reference is not.** It is a second, stronger reader, not ground truth: agreement
   with it measures consistency of reading, not correctness. Claude knows the history of the Fed
   and may recognise a statement and its date despite rule 1; it is not reproducible to the
@@ -809,6 +812,54 @@ reference, with no average bias. Its weaknesses: more stitched evidence, and it 
 decision empty on the FIMA repo facility statement (S16) instead of `no_rate_decision`; on the
 size of moves the text does not state it guesses, as Qwen does (S19, S24, S29). All 28
 non-verbatim spans start with at least four words found in the text.
+
+**Repair loop (2026-11-06).** Why was Claude at 0 non-verbatim spans? Not only because it is a
+stronger model: each of the three Claude readers ran a script that looked for its spans in the
+text and corrected the missing ones before handing in (they say so in their notes). Phi-4 had
+one try. The repair loop gives the local model the same chance, in code
+(`LLMClient.extract_with_repair`):
+
+1. **Act.** The model answers once, as in a single pass.
+2. **Verify.** A verifier, plain code with no model (`evidence_problems`), lists every span that
+   is not in the text.
+3. **Feed back.** If it finds something, the problems go back to the model as a new user turn in
+   the same conversation. The model keeps no memory between requests, so the request holds the
+   whole history: system, statement, its first answer, the problems. The message is versioned
+   (`fomc-repair-v1`): it quotes each bad span, asks for the exact words or a null, and asks to
+   change nothing else.
+4. **Stop** when the verifier finds nothing or after `max_repairs` turns (here 1).
+
+Every rejected answer is kept in the record (`rejected`), with what the verifier said and what
+the turn cost, so the first answer and the repaired one can both be measured. The cache key
+includes the procedure (`single-pass` or `repair-1:fomc-repair-v1`), so the two runs live side
+by side.
+
+Phi-4, 65 statements (`just extract-local --repairs 1`, `just extract-eval phi-4
+claude-opus-5-5 --repairs 1`):
+
+| | Single pass | Repair loop (≤ 1 turn) |
+|---|---|---|
+| Statements sent back | – | 17 |
+| Non-verbatim spans | 28 / 403 | 17 / 402 |
+| Field values changed by the repair | – | 2 |
+| Median latency per statement | 8.2 s | 9.1 s (about twice as long for one sent back) |
+| Tone: correlation with Claude, mean gap | 0.91, +0.02 | 0.91, +0.02 |
+
+- **Determinism holds.** The first answer of the repair run is byte-identical to the single-pass
+  answer on 65 of 65 statements (temperature 0, seed 0, same server build).
+- **The loop fixes the easy cases.** A span stitched from two sentences with "..." becomes one of
+  the two sentences (P4, inflation).
+- **It fails when the verifier's message does not say where the error is.** P4, forward
+  guidance: the model wrote "The Committee expects that, with gradual adjustments…", the
+  statement says "The Committee *currently* expects that…". Told only that the span is not in
+  the text, the model sent back the same span. A feedback that showed the closest passage would
+  likely fix it; constraining the evidence to sentence numbers would make the error impossible
+  (next step).
+- **The repair barely touches the reading.** 2 field values moved, and the agreement with the
+  reference is unchanged, so the repair fixes citations, not judgements.
+
+The repair loop is kept as a measured procedure, not adopted: it fixes 11 of 28 spans for about
+10% more time.
 
 ### 6.7 Look-ahead tests (H3)
 
@@ -963,3 +1014,4 @@ and the report.
 | 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for the maintainer; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
 | 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
 | 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, AgenticEnv profile `research`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
+| 2026-11-06 | Repair loop added and measured (one turn, `fomc-repair-v1`): Phi-4 non-verbatim spans 28 → 17, 2 values moved | the reference had checked its own spans; the loop gives the local model the same step; kept as a measured procedure, not adopted (§6.6) |
