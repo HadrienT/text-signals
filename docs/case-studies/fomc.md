@@ -1717,6 +1717,26 @@ a larger β is reported as "consistent with better reading, not separable from l
 and quota use. Their readings are kept and reused by a full run, since the inputs are the same.
 No market data is joined in the trial.
 
+**Trial result (10 statements, one per call).** 10 valid readings, about 10 s each; API-equivalent
+cost $0.41, counted against the subscription quota. Decision and size right on all 10 for both
+readers (FRED). Evidence not verbatim: 0 statements for Claude, 2 for Phi-4. Claude gives −2 to
+explicit commitments (2003 "considerable period", the 2012 date and thresholds) where Phi-4
+gives −1. The judgement that this follows the schema better is Claude's own, so it is not
+independent. About 65% of a call's cost is the answer, which every statement needs in full,
+and about 10% is the fixed part.
+
+**Batch trial, at the maintainer's request (2026-11-07), to measure the quota cost of one batch.**
+30 statements, drawn at random from the 240 not read in the trial (seed 20261111), go in one
+call in a random order, each under a neutral code (S01…S30). The texts are the **anonymised**
+versions (§6.7), to limit recognition. The prompt v2 system message is followed by an
+instruction to read each statement on its own and return one reading per code; the schema is a
+list of 30 readings (`sources/fomc/claude_batch.py`). Effort high, as in the trial, so that the
+cost per statement compares. Expected limits, written before the run:
+- reading 30 texts in one context can anchor readings on each other (§6.6, the reference
+  reader);
+- the anonymised texts differ from the original texts Phi-4's primary score was read from, but
+  match the texts of Phi-4's anonymised run (§6.7).
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and

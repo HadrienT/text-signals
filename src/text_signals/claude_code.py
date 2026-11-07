@@ -74,6 +74,35 @@ def parse(
         return None, str(e)
 
 
+def run_raw(
+    system: str,
+    user: str,
+    schema: dict[str, Any],
+    *,
+    workdir: Path,
+    model: str,
+    effort: str,
+    timeout_s: float,
+) -> tuple[dict[str, Any], int]:
+    """One ``claude -p`` call: (the JSON payload it prints, its return code)."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        command(model, effort, system, schema),
+        input=user,
+        capture_output=True,
+        text=True,
+        cwd=workdir,
+        env=clean_env(),
+        timeout=timeout_s,
+        check=False,
+    )
+    try:
+        payload: dict[str, Any] = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = {"is_error": True, "subtype": "unparsable", "stderr": proc.stderr[-2000:]}
+    return payload, proc.returncode
+
+
 class ClaudeCodeReader:
     """Reads one document per ``claude -p`` process."""
 

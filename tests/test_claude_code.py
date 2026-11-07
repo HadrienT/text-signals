@@ -30,3 +30,17 @@ def test_parse_validates_the_structured_output() -> None:
     assert out is None and err is not None
     assert parse({"is_error": True, "subtype": "error_max_turns"}, Out)[0] is None
     assert parse({}, Out) == (None, "no structured output")
+
+
+def test_batch_schema_and_render() -> None:
+    from text_signals.sources.fomc.claude_batch import batch_schema, render
+
+    codes, user = render(["first text", "second text"])
+    assert codes == ["S01", "S02"]
+    assert user == "Statements:\n\n[S01]\nfirst text\n\n[S02]\nsecond text"
+    schema = batch_schema(codes)
+    readings = schema["properties"]["readings"]
+    assert readings["items"]["properties"]["code"]["enum"] == codes
+    assert readings["items"]["required"][0] == "code"
+    assert readings["minItems"] == 2 == readings["maxItems"]
+    assert "ForwardGuidance" in schema["$defs"]
