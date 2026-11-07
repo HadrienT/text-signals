@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
@@ -103,6 +104,64 @@ def retrieval_metrics(ranks: list[int | None], ks: tuple[int, ...] = KS) -> dict
     return out
 
 
+CUTOFF = date(2024, 6, 30)  # Phi-4's training-data cutoff (§5.2)
+
+
+def _doc_date(passage_id: str) -> date:
+    """The release date in a passage id, e.g. ``fomc-statement-20260729#p1``."""
+    match = re.search(r"(\d{8})#", passage_id)
+    if match is None:
+        raise ValueError(f"no date in {passage_id}")
+    d = match.group(1)
+    return date(int(d[:4]), int(d[4:6]), int(d[6:]))
+
+
+def answer_report(
+    questions: list[Question], rows: list[dict[str, Any]], judgments: list[dict[str, str]]
+) -> dict[str, float]:
+    """The answering metrics of §6.8 from the checked answers and the judgments."""
+    q = {x.qid: x for x in questions}
+    j = {x["qid"]: x for x in judgments}
+    answerable = [r for r in rows if q[r["qid"]].answerable]
+    unanswerable = [r for r in rows if not q[r["qid"]].answerable]
+    answered = [r for r in answerable if not r["refused"]]
+    checks = [c for r in rows if not r["refused"] for c in r["checks"]]
+
+    def share(items: list[Any], pred: Any) -> float:
+        return sum(1 for i in items if pred(i)) / len(items) if items else float("nan")
+
+    def after(r: dict[str, Any]) -> bool:
+        """Is a reference passage from a document released after the cutoff?"""
+        return any(_doc_date(pid) > CUTOFF for pid in q[r["qid"]].reference_passages)
+
+    out = {
+        "n_answerable": float(len(answerable)),
+        "false_refusals": float(len(answerable) - len(answered)),
+        "n_answered": float(len(answered)),
+        "n_unanswerable": float(len(unanswerable)),
+        "correct_refusals": float(sum(bool(r["refused"]) for r in unanswerable)),
+        "n_citations": float(len(checks)),
+        "citations_strict": share(checks, lambda c: c["verbatim"]),
+    }
+    for cat in ("exact", "punctuation", "wrong_passage", "not_found"):
+        out[f"citations_{cat}"] = float(sum(c["category"] == cat for c in checks))
+    for scale, values in (
+        ("correctness", ("right", "partial", "wrong")),
+        ("faithfulness", ("supported", "partly", "unsupported")),
+    ):
+        for v in values:
+            out[f"{scale}_{v}"] = float(sum(j[r["qid"]].get(scale) == v for r in answered))
+    for name, sub in (
+        ("before_cutoff", [r for r in answerable if not after(r)]),
+        ("after_cutoff", [r for r in answerable if after(r)]),
+    ):
+        out[f"n_{name}"] = float(len(sub))
+        out[f"right_{name}"] = float(
+            sum(not r["refused"] and j[r["qid"]].get("correctness") == "right" for r in sub)
+        )
+    return out
+
+
 def load_split(path: Path = SPLIT) -> dict[str, str]:
     split: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))["split"]
     return split
@@ -147,9 +206,19 @@ def run_retrieval(split_name: str) -> dict[str, dict[str, float]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["split", "retrieval"])
+    parser.add_argument("cmd", choices=["split", "retrieval", "answers"])
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     args = parser.parse_args()
+    if args.cmd == "answers":
+        rows = json.loads(
+            Path(f"data/interim/fomc/qa/answers-{args.split}-fomc-qa-v2.json").read_text()
+        )
+        judged = json.loads(
+            Path(f"data/labels/fomc_qa_v1_judgments_{args.split}.json").read_text()
+        )["judgments"]
+        for k, v in answer_report(load_questions(), rows, judged).items():
+            print(f"{k}: {v:.3f}" if k.startswith("citations_strict") else f"{k}: {v:.0f}")
+        return
     if args.cmd == "retrieval":
         for method, m in run_retrieval(args.split).items():
             print(method, {k: round(v, 3) for k, v in m.items()})

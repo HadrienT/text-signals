@@ -66,3 +66,64 @@ def test_first_hit_rank_and_metrics() -> None:
     m = retrieval_metrics([1, 3, None, 9])
     assert m["recall@1"] == 0.25 and m["recall@5"] == 0.5 and m["recall@8"] == 0.5
     assert m["mrr@8"] == (1 + 1 / 3) / 4
+
+
+def test_answer_report_counts_refusals_judgments_and_cutoff() -> None:
+    from text_signals.sources.fomc.qa_eval import answer_report
+
+    qs = [
+        Question(
+            qid="a",
+            type="lookup",
+            as_of=None,
+            answerable=True,
+            question="?",
+            reference_answer="!",
+            reference_passages=["fomc-statement-20081216#p1"],
+        ),
+        Question(
+            qid="b",
+            type="lookup",
+            as_of=None,
+            answerable=True,
+            question="?",
+            reference_answer="!",
+            reference_passages=["fomc-statement-20260729#p1"],
+        ),
+        Question(
+            qid="c",
+            type="lookup",
+            as_of=None,
+            answerable=True,
+            question="?",
+            reference_answer="!",
+            reference_passages=["fomc-statement-20260729#p5"],
+        ),
+        Question(
+            qid="u",
+            type="unanswerable",
+            as_of=None,
+            answerable=False,
+            question="?",
+            reference_answer="!",
+            reference_passages=[],
+        ),
+    ]
+    exact = {"verbatim": True, "category": "exact"}
+    punct = {"verbatim": False, "category": "punctuation"}
+    rows = [
+        {"qid": "a", "refused": False, "checks": [exact, punct]},
+        {"qid": "b", "refused": False, "checks": [exact]},
+        {"qid": "c", "refused": True, "checks": []},
+        {"qid": "u", "refused": True, "checks": []},
+    ]
+    judged = [
+        {"qid": "a", "correctness": "right", "faithfulness": "supported"},
+        {"qid": "b", "correctness": "wrong", "faithfulness": "unsupported"},
+    ]
+    r = answer_report(qs, rows, judged)
+    assert r["false_refusals"] == 1 and r["correct_refusals"] == 1
+    assert r["citations_strict"] == 2 / 3 and r["citations_punctuation"] == 1
+    assert r["correctness_right"] == 1 and r["faithfulness_unsupported"] == 1
+    assert r["n_before_cutoff"] == 1 and r["right_before_cutoff"] == 1
+    assert r["n_after_cutoff"] == 2 and r["right_after_cutoff"] == 0

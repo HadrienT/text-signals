@@ -1884,6 +1884,72 @@ does worse than v1 on those questions in any of four ways:
 Otherwise v1 is kept. Either way the prompt is then frozen and the 40 test questions are run
 once.
 
+*Development run of v2.* 0 invalid outputs; 2 of 2 refusals correct; 16 of 19 citations pass the
+strict check (v1: 14 of 18), none attributed to the wrong passage (v1: 1). No answer judged right
+under v1 became wrong. **v2 is adopted by the rule.** The gain is small: C03 is still wrong. Rule 6
+did not fire, and the answer now dates the 2012 thresholds to March 2014. The failure starts in
+retrieval, and a prompt cannot repair it.
+
+**Test results (2026-11-07, run once, prompt v2 frozen).**
+`python -m text_signals.sources.fomc.qa_eval retrieval --split test` and `… answers --split test`.
+The judgments, with a reason for each, are in `data/labels/fomc_qa_v1_judgments_test.json`.
+
+*Retrieval* (32 answerable test questions):
+
+| | recall@1 | recall@5 | recall@8 | MRR@8 |
+|---|---|---|---|---|
+| BM25 | 0.22 | 0.47 | 0.50 | 0.31 |
+| Encoder | 0.34 | 0.44 | 0.53 | 0.40 |
+| **Fusion** | 0.28 | 0.50 | **0.59** | 0.38 |
+| BM25, no header | 0.06 | 0.19 | 0.31 | 0.12 |
+| Encoder, no header | 0.03 | 0.19 | 0.25 | 0.10 |
+| Fusion, no header | 0.09 | 0.22 | 0.25 | 0.14 |
+
+On questions it was not designed on, the header more than doubles recall@8 (0.25 → 0.59 for the
+fusion). Unlike on the 8 development questions, the fusion is the best of the three at
+recall@8, which supports keeping it.
+
+*Answers* (40 test questions):
+
+| | Result |
+|---|---|
+| Invalid outputs | 0 of 40 |
+| Answerable questions answered | 28 of 32 (4 false refusals) |
+| … of which right / partial / wrong | **21 / 6 / 1** |
+| … of which supported / partly / unsupported by their citations | 25 / 1 / 2 |
+| Unanswerable questions refused | **6 of 8** |
+| Citations passing the strict check | **60 of 63 (95%)**: 2 punctuation only, 1 not found, 0 wrong passage |
+| Right, questions before Phi-4's cutoff | 15 of 22 |
+| Right, questions after it | 6 of 10 |
+
+Reading:
+
+- **When the right passage is retrieved, the answer is almost always right and well cited.** The
+  partial answers (L14, C02, C06, C07, P04) and three of the four false refusals (L08, L16, C01)
+  come with a reference passage missing from the top 8. Retrieval is the bottleneck, as on the
+  development questions. The fourth false refusal (P02) had its reference passage at rank 3.
+- **Citations are reliable at the level of the words.** No quote was invented. The one not found
+  (P08) joins two sentences of the same passage, as Phi-4 did with evidence spans (§6.6).
+- **The errors that matter are attributions in time.** L09 names George, who dissented in June
+  2022, as the dissenter of March 2022 (it was Bullard). L10 names Hammack, who dissented in
+  December 2024, for September 2024 (it was Bowman). Each quote is exact, but it is attached to
+  the wrong meeting. The citation check cannot catch this; only reading the header's date
+  against the claim can. A user who checks the quote alone would be misled.
+- **One answer came from memory: U02, a look-ahead in miniature.** Asked as of 1 December 2015,
+  before the first increase, the model answered "0.25–0.50 percent". That figure is right after
+  the fact, but none of the passages shown contains it (they cite the increases of 2005–2006).
+  The as-of filter worked; the model ignored rule 1. The point-in-time rule therefore cannot
+  rest on the retriever alone: a model that knows the period can bring the answer in anyway.
+  This is the agent-level counterpart of the dating probe (§6.7).
+- **U01 was an imperfect trap**, my error in writing it. FOMC minutes do report on foreign
+  central banks. The model used such a passage but dated an ECB announcement to the wrong
+  meeting, so the answer is wrong either way.
+- **Before and after the cutoff**, the share of right answers is similar (15 of 22 and 6 of 10).
+  The agent reads documents it cannot know about as well as those it may remember, which is
+  what retrieval is for.
+
+The maintainer checks a sample of the judgments.
+
 ---
 
 ## 7. Specification freeze
@@ -2057,3 +2123,4 @@ and the report.
 | 2026-11-07 | Evaluation set v1: 50 questions (17 lookup, 7 change, 8 press conference, 8 minutes, 10 unanswerable), references found without the retriever, split fixed before any answer | references found with the retriever would inflate its recall; 11 questions are after Phi-4's cutoff, so only reading can answer them (§6.8) |
 | 2026-11-07 | Retrieval: a header from document metadata (type, dates) indexed with each passage, after the development questions showed recall@8 of 25%; BM25 drops zero-score passages; retrieval frozen, fusion kept | passages did not say which document they come from, so questions naming a document or date failed; the method is not switched on 8 questions; the no-header variant is reported on the test set (§6.8) |
 | 2026-11-07 | Development answers: 2 of 2 refusals right; 4 of 8 answers right, 1 half right, 1 vague, 1 wrong (C03); 14 of 18 citations verbatim, 3 punctuation only, 1 attributed to the wrong passage. Citation categories added after seeing them | the strict check counts a comma and a misattribution alike; the categories separate them, and the strict figure stays the main one (§6.8) |
+| 2026-11-07 | Prompt v2 adopted by its rule; test run once: fusion recall@8 0.59 (0.25 without headers); 21 of 32 answerable right, 6 partial, 1 wrong, 4 false refusals; 6 of 8 refusals; 60 of 63 citations verbatim; one answer from memory (U02) and two dissents attributed to the wrong meeting | retrieval is the bottleneck; citations are reliable word for word but not in time; the point-in-time rule needs the model to obey rule 1, not only the filter (§6.8) |
