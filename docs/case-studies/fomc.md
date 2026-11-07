@@ -1397,6 +1397,43 @@ that has seen what followed it. Statements before 2000 have no such model and ar
   primary result; if the reader is valid and β is null, that is evidence that it may. Not part
   of the Holm family.
 
+**ChronoGPT results (2026-11-07).** `python -m text_signals.sources.fomc.chrono_scores` ran
+overnight on CPU: all 26 vintages (1999 to 2024), 230 statements released from 2000, none
+failed, between 2.5 and 6.5 minutes per vintage. Each record keeps the repository, revision,
+weights sha256, prompt and splitter versions and the vintage's anchor offset. Then
+`python -m text_signals.sources.fomc.lookahead chrono`:
+
+| | Value |
+|---|---|
+| Correlation of `chrono_tone` with the reference tone (n = 83) | **0.04** (bar 0.30): **not valid** |
+| Correlation with Phi-4's `llm_tone`, all scored statements | −0.00 |
+| β of `chrono_tone`, primary regression from 2000 (n = 225) | +0.28 bp per SD, p = 0.45 |
+| β of Phi-4's `llm_tone`, same statements | +1.01 bp per SD, p = 0.003 |
+| Both together | ChronoGPT +0.23 (p = 0.51); Phi-4 +0.99 (p = 0.002) |
+
+By the criterion fixed before scoring, the reader is too weak to read the statements. Its
+regression is reported above and not interpreted. The Phi-4 line gives a side result: on the
+statements from 2000, Phi-4's β is the same as on the full primary sample.
+
+*Why it fails (post hoc, looked at after the verdict; it changes nothing in the specification).*
+`lookahead chrono-diagnostics`:
+
+- The most dovish statements by the reference get hawkish ChronoGPT scores: 28 January 2009
+  (reference −1.8) scores +0.31 and 29 April 2020 (−1.6) scores +0.51, close to the
+  2 February 2000 rate hike (+2.0), which scores +0.32.
+- **No reading within a vintage.** With both scores demeaned by vintage, the correlation is
+  −0.09.
+- **The raw log-odds, before the anchor offset, correlate at 0.34 with the reference.** This
+  would pass the bar, but the correlation comes from differences in level between vintages,
+  that is from the era and not from the statement, so it is not a reading. It was seen after
+  the verdict and is not adopted.
+- **Part of the score is statement length**: correlation 0.43 with the number of sentences.
+
+Reading: a 1.5 B parameter model scored by next-word likelihood does not read the tone of an
+FOMC statement, so ChronoGPT gives no evidence for or against look-ahead. **H3 stays open**, as
+stated above. What would close it is still a family of dated models able to do the task, or a
+longer run of statements after Phi-4's cutoff.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1570,3 +1607,4 @@ and the report.
 | 2026-11-06 | Look-ahead tests specified: cutoff interaction (19 statements after, low power stated in advance), anonymisation rule and rescoring, dating probe | §6.7 left the statistics and the anonymisation rule open; fixed before running |
 | 2026-11-06 | Look-ahead: anonymisation barely moves the scores (r = 0.96, β 0.85 vs 0.97 bp per SD); Phi-4 dates pre-cutoff statements within about a year but not post-cutoff ones; no detectable effect after the cutoff (19 statements) | H3 left open and stated as such: the primary result holds for a model that knows the period (§6.7) |
 | 2026-11-06 | Look-ahead-free reader: ChronoGPT vintage Y − 1 for each statement of year Y, next-word likelihood score with anchor calibration, validity bar r ≥ 0.30 with the reference, all fixed before scoring | the instruction-following use failed on invented sentences; the GPU is unavailable after midnight, so the run is on CPU (§6.7) |
+| 2026-11-07 | ChronoGPT reader not valid: r = 0.04 with the reference against the 0.30 bar; its β (+0.28 bp per SD, p = 0.45) reported, not interpreted; post hoc, the score tracks the era and statement length, not the text | the criterion fixed before scoring decides; the raw score's 0.34 is between vintages and seen after the verdict, so not adopted; H3 stays open (§6.7) |
