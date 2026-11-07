@@ -3,9 +3,10 @@
 **Extracting investment signals from text corpora with local LLMs, and measuring honestly
 whether they hold up.**
 
-Status: case study 1 (FOMC communications) is complete. Read the
-[research report](reports/fomc.md) first; the [protocol](docs/case-studies/fomc.md) records
-every decision with its date and reason.
+Status: case study 1 (FOMC communications) is complete. Read the five-page
+[white paper (PDF)](reports/fomc_whitepaper.pdf) or the longer
+[research report](reports/fomc.md); the [protocol](docs/case-studies/fomc.md) records every
+decision with its date and reason.
 
 ## Main results: FOMC statements and the 2-year yield
 

@@ -56,3 +56,13 @@ results:
     echo "== retrieval agent"
     uv run python -m text_signals.sources.fomc.qa_eval retrieval --split test
     uv run python -m text_signals.sources.fomc.qa_eval answers --split test
+
+# The white paper PDF (reports/fomc_whitepaper.pdf) from its LaTeX source, built in a temp dir.
+whitepaper:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(mktemp -d)
+    cd reports
+    for _ in 1 2; do pdflatex -interaction=nonstopmode -halt-on-error -output-directory="$out" fomc_whitepaper.tex > "$out/build.log"; done
+    cp "$out/fomc_whitepaper.pdf" fomc_whitepaper.pdf
+    echo "reports/fomc_whitepaper.pdf"
