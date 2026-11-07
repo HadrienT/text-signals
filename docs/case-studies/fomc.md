@@ -1756,6 +1756,58 @@ not yet read in a batch, the 10 of the one-per-call trial among them, are shuffl
 then come from the same procedure and the same anonymised texts. Larger batches raise the risk
 of anchoring; the same two checks are reported for each call.
 
+**Results (2026-11-07).** All 250 readings valid, in three calls (30, 110 and 110 statements;
+443 s and 505 s for the two large ones). API-equivalent cost for all three: $4.65. 241 statements
+have a tone score; the other 9 fill no stance field.
+
+| Call | Decision right: Claude / Phi-4 (anonymised) | Size right (Claude) | Evidence not verbatim: Claude / Phi-4 | Tone vs position | Mean change between consecutive readings: Claude / Phi-4 |
+|---|---|---|---|---|---|
+| trial-1 (30) | 1.00 / 0.97 | 1.00 | **0%** / 28% | 0.03 | 0.92 / 0.78 |
+| full-1 (110) | 0.95 / 0.95 | 0.89 | **0%** / 37% | −0.16 | 1.08 / 0.87 |
+| full-2 (110) | 0.96 / 0.96 | 0.93 | **0%** / 34% | 0.07 | 0.96 / 0.77 |
+
+The decision is read equally well by both. Claude quotes its evidence exactly every time, while
+Phi-4 fails to on about a third of the statements. There is no clear sign of anchoring in the
+large batches.
+
+*Signal* (`python -m text_signals.sources.fomc.claude_signal`). The primary specification, on
+the same 239 statements of the primary sample for every score. Only 3 of them fall after
+Claude's cutoff.
+
+| Score | β per SD (bp) | HAC p | Incremental R² | Out-of-sample R² vs baseline | Clark–West p |
+|---|---|---|---|---|---|
+| Phi-4, original texts (primary) | 0.97 | 0.006 | 0.022 | 0.026 | 0.003 |
+| Phi-4, anonymised texts | 0.84 | 0.012 | 0.018 | 0.013 | 0.016 |
+| **Claude, anonymised texts** | **0.90** | **0.007** | 0.021 | 0.004 | 0.007 |
+| Claude next to Phi-4 (original) | 0.40 | 0.57 | | | |
+| Phi-4 (original) next to Claude | 0.61 | 0.39 | | | |
+
+Claude's tone correlates at 0.89 with Phi-4's reading of the same anonymised texts (0.88 with
+the original reading).
+
+Reading:
+
+- **The frontier model does not find a much stronger signal.** On the like-for-like comparison
+  (anonymised texts), Claude's β is 0.90 bp per SD against 0.84 for Phi-4, with the same
+  incremental R², and both are below Phi-4's primary score on the original texts. Out of sample,
+  Claude does worse than either Phi-4 score (0.4% against 1.3% and 2.6%), though the Clark–West
+  test still rejects in its favour. Together, neither score adds to the other: they measure the
+  same thing.
+- **Claude extracts more cleanly.** All of its evidence is verbatim, against two thirds of
+  Phi-4's statements, and it follows the schema's definitions more closely on explicit forward
+  guidance (§6.9, trial). Cleaner extraction does not translate into a stronger link with the
+  2-year yield. The tone of an FOMC statement is coarse enough that a 14 B model reads what
+  matters for the market.
+- **What this says about look-ahead (exploratory, not a test of H3).** Claude's training data
+  cover all but 3 statements, and it knows the history of the period better than Phi-4. If
+  knowledge of what followed drove the scores, the model that knows most should fit best. It
+  does not: same β, worse out of sample. This does not prove the absence of look-ahead, since
+  Claude read anonymised texts in batches, unlike Phi-4's primary score. It is consistent with
+  test B: the scores follow the text.
+- **For a research team**, at this task a local 14 B model gives the same signal as a frontier
+  model, for free and without sending a document out. The frontier model's advantage is
+  auditability (exact evidence), not signal.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -2210,3 +2262,4 @@ and the report.
 | 2026-11-07 | Development answers: 2 of 2 refusals right; 4 of 8 answers right, 1 half right, 1 vague, 1 wrong (C03); 14 of 18 citations verbatim, 3 punctuation only, 1 attributed to the wrong passage. Citation categories added after seeing them | the strict check counts a comma and a misattribution alike; the categories separate them, and the strict figure stays the main one (§6.8) |
 | 2026-11-07 | Prompt v2 adopted by its rule; test run once: fusion recall@8 0.59 (0.25 without headers); 21 of 32 answerable right, 6 partial, 1 wrong, 4 false refusals; 6 of 8 refusals; 60 of 63 citations verbatim; one answer from memory (U02) and two dissents attributed to the wrong meeting | retrieval is the bottleneck; citations are reliable word for word but not in time; the point-in-time rule needs the model to obey rule 1, not only the filter (§6.8) |
 | 2026-11-07 | A frontier model (claude-opus-5-5 via `claude -p`, fresh process per statement, no tools, subscription) specified as an exploratory second reader; trial on 10 statements | the maintainer asks whether a frontier model reads much better; Phi-4 stays the reader of record; a larger β cannot be separated from look-ahead, since only 3 statements fall after Claude's cutoff (§6.9) |
+| 2026-11-07 | Second reader run in batches at the maintainer's request (30, then two calls of 110, anonymised texts, random order); results: β 0.90 bp per SD (p = 0.007) against 0.84 for Phi-4 on the same texts, out-of-sample R² 0.4%; all evidence verbatim | a batch halves the quota per statement; one call for 250 exceeds Opus's output limit; the frontier model extracts more cleanly but finds no stronger signal (§6.9) |
