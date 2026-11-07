@@ -1865,6 +1865,25 @@ answers and labelled as such**. Each citation is classed as *exact*, *punctuatio
 same words in the same order, punctuation ignored), *wrong passage* (its words are in another
 shown passage) or *not found*. The specified check stays the main figure.
 
+*Prompt `fomc-qa-v2`, decided by the maintainer after the development answers, before running
+it.* One revision, with two generic rules added to v1:
+
+5. attribute every fact to the document named in its passage header, with that document's
+   date (the C03 failure);
+6. if the passages answer only part of the question, answer that part and say which part they
+   do not cover, instead of filling the gap.
+
+Rule 3 now also asks for punctuation and quotation marks exactly as in the passage. v2 is run
+once on the 10 development questions. **Decision rule, fixed now**: v2 is adopted unless it
+does worse than v1 on those questions in any of four ways:
+- more invalid outputs;
+- fewer correct refusals;
+- a lower share of citations passing the strict check;
+- an answer judged right under v1 becoming wrong.
+
+Otherwise v1 is kept. Either way the prompt is then frozen and the 40 test questions are run
+once.
+
 ---
 
 ## 7. Specification freeze

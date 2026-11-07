@@ -81,3 +81,12 @@ def test_citation_categories_separate_punctuation_from_misattribution() -> None:
     checks = check_citations(a, [P1, p2])
     assert [c.category for c in checks] == ["punctuation", "wrong_passage", "not_found"]
     assert checks[1].found_in == [p2.passage_id]
+
+
+def test_prompt_v2_extends_v1_with_the_two_rules() -> None:
+    from text_signals.sources.fomc.qa_answer import QA_V1, QA_V2
+
+    assert QA_V2.version == "fomc-qa-v2" and QA_V1.version == "fomc-qa-v1"
+    assert "5. Each passage's header" in QA_V2.system and "6. If the passages" in QA_V2.system
+    assert "quotation marks exactly" in QA_V2.system
+    assert QA_V2.system.endswith(QA_V1.system[QA_V1.system.index("Reply in JSON") :])

@@ -78,6 +78,29 @@ QA_V1 = Prompt(
 )
 
 
+# Revised after the development questions (§6.8): two generic rules added (5 and 6), wording
+# of rule 3 extended to punctuation. v1 is kept for the record.
+QA_V2 = Prompt(
+    version="fomc-qa-v2",
+    system=QA_V1.system.replace(
+        "one sentence or part of one, without changing, adding or dropping any word.",
+        "one sentence or part of one, without changing, adding or dropping any word, and with "
+        "the punctuation and quotation marks exactly as in the passage.",
+    ).replace(
+        "\n\nReply in JSON:",
+        "\n5. Each passage's header names its document and release date. Attribute every fact "
+        "to the document it comes from, with that document's date; never attribute a passage to "
+        "a date other than its own.\n"
+        "6. If the passages answer only part of the question (for example one of two dates, or "
+        "one of two things asked), answer that part and say plainly which part the passages do "
+        "not cover, instead of filling the gap.\n\nReply in JSON:",
+    ),
+    user_template="{text}",
+)
+PROMPTS = {QA_V1.version: QA_V1, QA_V2.version: QA_V2}
+PROMPT = QA_V2
+
+
 def render(question: str, as_of: date | None, hits: list[Hit]) -> str:
     """The user message: the question (with its as-of date) and the passages with their ids."""
     when = f" (asked as of {as_of.isoformat()})" if as_of is not None else ""
@@ -162,7 +185,7 @@ def retrieved(split_name: str) -> list[tuple[str, date | None, str, list[Hit]]]:
     return out
 
 
-def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
+def run(split_name: str, base_url: str, prompt: Prompt = PROMPT) -> list[dict[str, Any]]:
     """Answer every question of a split; cache the model records, write the checked answers."""
     client = LLMClient(base_url)
     model, model_path = client.model_info()
@@ -175,7 +198,7 @@ def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
         return client.extract(
             doc_id=qid,
             text=text,
-            prompt=QA_V1,
+            prompt=prompt,
             schema=Answer,
             schema_version=SCHEMA_VERSION,
             decoding=decoding,
@@ -188,7 +211,7 @@ def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
         texts.items(),
         ask,
         model=model,
-        prompt_version=QA_V1.version,
+        prompt_version=prompt.version,
         schema_version=SCHEMA_VERSION,
         cache_path=OUT / f"answers-{model}.jsonl",
     )
@@ -213,16 +236,16 @@ def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
             }
         )
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / f"answers-{split_name}.json").write_text(json.dumps(rows, indent=1))
+    (OUT / f"answers-{split_name}-{prompt.version}.json").write_text(json.dumps(rows, indent=1))
     return rows
 
 
-def recheck(split_name: str) -> list[dict[str, Any]]:
+def recheck(split_name: str, prompt: Prompt = PROMPT) -> list[dict[str, Any]]:
     """Recompute the citation checks of stored answers, without the model."""
     from text_signals.sources.fomc.qa import all_passages, load_documents
 
     by_id = {p.passage_id: p for p in all_passages(load_documents())}
-    path = OUT / f"answers-{split_name}.json"
+    path = OUT / f"answers-{split_name}-{prompt.version}.json"
     rows: list[dict[str, Any]] = json.loads(path.read_text())
     for r in rows:
         if not r["valid"]:
@@ -241,8 +264,12 @@ def main() -> None:
     parser.add_argument("cmd", choices=["run", "recheck"])
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--prompt", choices=sorted(PROMPTS), default=PROMPT.version)
     args = parser.parse_args()
-    rows = run(args.split, args.base_url) if args.cmd == "run" else recheck(args.split)
+    prompt = PROMPTS[args.prompt]
+    rows = (
+        run(args.split, args.base_url, prompt) if args.cmd == "run" else recheck(args.split, prompt)
+    )
     invalid = sum(not r["valid"] for r in rows)
     refused = sum(bool(r["refused"]) for r in rows)
     checks = [c for r in rows for c in r["checks"]]
