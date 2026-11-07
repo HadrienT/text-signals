@@ -20,6 +20,7 @@
 \usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
+\usepackage[round,authoryear]{natbib}
 \usepackage[hidelinks]{hyperref}
 
 \definecolor{accent}{RGB}{31,58,96}
@@ -46,6 +47,7 @@
 \fancyfoot[C]{\sffamily\footnotesize\color{muted}\thepage}
 \fancypagestyle{first}{\fancyhf{}\fancyfoot[C]{\sffamily\footnotesize\color{muted}\thepage}}
 
+\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}
 \newcommand{\bp}{\,bp}
 \newcommand{\sd}{\,SD}
 
@@ -87,7 +89,7 @@ correctly with verbatim citations, but it also shows how such citations can misl
 
 When the Federal Open Market Committee releases a statement, the rate decision is usually
 priced in. What moves bonds is what the text implies about the future path of policy
-(G\"urkaynak, Sack and Swanson, 2005). This paper asks two questions. Can an LLM reading only
+\citep{gss2005}. This paper asks two questions. Can an LLM reading only
 the text measure that stance well enough to explain the market's reaction, beyond the decision
 and beyond dictionary and encoder baselines? And how much of the result survives once
 look-ahead bias is addressed?
@@ -110,7 +112,8 @@ cached with its model, weights, prompt and schema versions.}
 \end{figure}
 
 \sfb{Event and outcome.} There is one observation per statement: the change in the 2-year
-yield in the 30-minute window around the release (San Francisco Fed USMPD). The window
+yield in the 30-minute window around the release, from the San Francisco Fed's event-study
+database \citep[USMPD;][]{acosta2025}. The window
 isolates the statement from the press conference and same-day news; the daily change is kept
 as a robustness outcome. Release dates were checked against four sources, and two calendar
 errors and four misdated minutes in the intraday database were corrected.
@@ -120,9 +123,10 @@ errors and four misdated minutes in the intraday database were corrected.
   \Delta y_i = \alpha + \beta\,\mathrm{tone}_i + \gamma\,\mathrm{MP1}_i
   + \delta'\,\mathrm{baselines}_i + \varepsilon_i ,
 \]
-where MP1 is the futures-based surprise in the rate decision (Kuttner, 2001). The baselines are
-the Loughran--McDonald net negative share and FinBERT's mean $P(\text{neg}) - P(\text{pos})$.
-Inference uses Newey--West standard errors with 4 lags, chosen a priori. There is one primary
+where MP1 is the futures-based surprise in the rate decision \citep{kuttner2001}, defined in
+Appendix~\ref{app:mp1}. The baselines are the \citet{lm2011} net negative share and the mean
+$P(\text{neg}) - P(\text{pos})$ of FinBERT \citep{araci2019}. Inference uses Newey--West
+standard errors \citep{neweywest1994} with 4 lags, chosen a priori. There is one primary
 test ($H_0\!: \beta = 0$), and the 14 secondary tests are corrected together by Holm. Power was
 computed before scoring: about 0.92\bp{} per SD is detectable with 80\% power. The sample has
 250 statements; 243 enter the primary test.
@@ -201,7 +205,8 @@ Five of the 14 secondary tests survive Holm. The ones that bound the result:
 
 The model is refitted every January on past statements only and forecasts that year, from
 2000 to 2026. Adding the LLM score lowers the squared forecast error by \sfb{2.1\%} against
-the baseline (Clark--West one-sided $p = 0.003$). The gain is not steady (Figure~\ref{fig:oos}).
+the baseline; the Clark--West test of equal accuracy rejects with one-sided $p = 0.003$
+\citep{clarkwest2007}. The gain is not steady (Figure~\ref{fig:oos}).
 
 \begin{figure}[H]
 \centering
@@ -240,7 +245,7 @@ Anonymisation & With dates and names removed, scores correlate 0.96 with the ori
   $\beta$ is 0.85 against 0.97. \\
 Dating probe & The model dates anonymised statements: 81\% within one year, but it never
   places a statement after 2023. It knows the period. \\
-Look-ahead-free reader & Models trained only on earlier text (ChronoGPT vintages) cannot read
+Look-ahead-free reader & Models trained only on earlier text (ChronoGPT vintages, \citealp{he2025}) cannot read
   the statements ($r = 0.04$ against a 0.30 bar): no evidence either way. \\
 \textbf{Counterfactual edits} & \textbf{On 38 statements, a hawkish rewrite of the guidance
   sentence beats the dovish one 100\% of the time, before and after the cutoff alike.}
@@ -369,21 +374,108 @@ every number in this paper from the data and caches. The protocol records each d
 its date and reason.}
 
 % ================================================================
-\section*{References}
-{\footnotesize
-\begin{itemize}[leftmargin=1em,label={},itemsep=0pt,topsep=0pt]
-\item Araci, D. (2019). FinBERT: Financial sentiment analysis with pre-trained language models.
-\item Clark, T. and West, K. (2007). Approximately normal tests for equal predictive accuracy in
-  nested models. \emph{Journal of Econometrics}.
-\item G\"urkaynak, R., Sack, B. and Swanson, E. (2005). Do actions speak louder than words?
-  \emph{International Journal of Central Banking}.
-\item He, S., Lv, L., Manela, A. and Wu, J. (2025). Chronologically consistent large language models. arXiv:2502.21206.
-\item Kuttner, K. (2001). Monetary policy surprises and interest rates. \emph{Journal of
-  Monetary Economics}.
-\item Loughran, T. and McDonald, B. (2011). When is a liability not a liability?
-  \emph{Journal of Finance}.
-\item Newey, W. and West, K. (1994). Automatic lag selection in covariance matrix estimation.
-  \emph{Review of Economic Studies}.
+\section*{Data and software}
+{\small
+\begin{itemize}[leftmargin=1.2em]
+\item FOMC statements, minutes and press conference transcripts: Board of Governors of the
+  Federal Reserve System,
+  \href{https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm}{federalreserve.gov/monetarypolicy/fomccalendars.htm}.
+\item Intraday yield changes and the MP1 surprise: U.S. Monetary Policy Event-Study Database,
+  Federal Reserve Bank of San Francisco, \href{https://sffed.us/usmpd}{sffed.us/usmpd}.
+\item Daily Treasury yields and the federal funds target: FRED, Federal Reserve Bank of St.\ Louis,
+  \href{https://fred.stlouisfed.org/}{fred.stlouisfed.org}.
+\item Loughran--McDonald master dictionary:
+  \href{https://sraf.nd.edu/loughranmcdonald-master-dictionary/}{sraf.nd.edu/loughranmcdonald-master-dictionary}.
+\item Phi-4, Q8\_0 GGUF weights:
+  \href{https://huggingface.co/microsoft/phi-4-gguf}{huggingface.co/microsoft/phi-4-gguf}.
+\item FinBERT: \href{https://huggingface.co/ProsusAI/finbert}{huggingface.co/ProsusAI/finbert}.
+  Retrieval encoder bge-small-en-v1.5:
+  \href{https://huggingface.co/BAAI/bge-small-en-v1.5}{huggingface.co/BAAI/bge-small-en-v1.5}.
+  ChronoGPT vintages: \href{https://huggingface.co/manelalab}{huggingface.co/manelalab}.
+\item Code, protocol and data pipeline:
+  \href{https://github.com/HadrienT/text-signals}{github.com/HadrienT/text-signals}.
 \end{itemize}}
+
+{\small
+\renewcommand{\refname}{References}
+\setlength{\bibsep}{0.25em}
+\begin{thebibliography}{99}
+\bibitem[Acosta et~al.(2025)]{acosta2025}
+Acosta, M., Ajello, A., Bauer, M., Loria, F. and Miranda-Agrippino, S. (2025).
+Financial market effects of FOMC communication: Evidence from a new event-study database.
+\emph{Federal Reserve Bank of San Francisco Working Paper} 2025-30. \doi{10.24148/wp2025-30}.
+
+\bibitem[Araci(2019)]{araci2019}
+Araci, D. (2019). FinBERT: Financial sentiment analysis with pre-trained language models.
+\href{https://arxiv.org/abs/1908.10063}{arXiv:1908.10063}.
+
+\bibitem[Clark and West(2007)]{clarkwest2007}
+Clark, T.~E. and West, K.~D. (2007). Approximately normal tests for equal predictive accuracy
+in nested models. \emph{Journal of Econometrics} 138(1), 291--311.
+\doi{10.1016/j.jeconom.2006.05.023}.
+
+\bibitem[G\"urkaynak et~al.(2005)]{gss2005}
+G\"urkaynak, R., Sack, B. and Swanson, E. (2005). Do actions speak louder than words? The
+response of asset prices to monetary policy actions and statements. \emph{International Journal
+of Central Banking} 1(1), 55--93.
+\href{https://www.ijcb.org/journal/v1n1/do-actions-speak-louder-words-response-asset-prices-monetary-policy-actions-and}{ijcb.org}.
+
+\bibitem[He et~al.(2025)]{he2025}
+He, S., Lv, L., Manela, A. and Wu, J. (2025). Chronologically consistent large language models.
+\href{https://arxiv.org/abs/2502.21206}{arXiv:2502.21206}.
+
+\bibitem[Kuttner(2001)]{kuttner2001}
+Kuttner, K.~N. (2001). Monetary policy surprises and interest rates: Evidence from the Fed funds
+futures market. \emph{Journal of Monetary Economics} 47(3), 523--544.
+\doi{10.1016/S0304-3932(01)00055-1}.
+
+\bibitem[Loughran and McDonald(2011)]{lm2011}
+Loughran, T. and McDonald, B. (2011). When is a liability not a liability? Textual analysis,
+dictionaries, and 10-Ks. \emph{Journal of Finance} 66(1), 35--65.
+\doi{10.1111/j.1540-6261.2010.01625.x}.
+
+\bibitem[Nakamura and Steinsson(2018)]{ns2018}
+Nakamura, E. and Steinsson, J. (2018). High-frequency identification of monetary
+non-neutrality: The information effect. \emph{Quarterly Journal of Economics} 133(3),
+1283--1330. \doi{10.1093/qje/qjy004}.
+
+\bibitem[Newey and West(1994)]{neweywest1994}
+Newey, W.~K. and West, K.~D. (1994). Automatic lag selection in covariance matrix estimation.
+\emph{Review of Economic Studies} 61(4), 631--653. \doi{10.2307/2297912}.
+\end{thebibliography}}
+
+% ================================================================
+\appendix
+\section{The MP1 surprise}
+\label{app:mp1}
+
+MP1 measures how much the rate decision itself surprised the market, using fed funds futures
+\citep{kuttner2001}. A fed funds futures contract for a given month settles on the
+\emph{average} effective federal funds rate over that month, and its implied rate is
+$100 - \text{price}$. Its change in a narrow window around a release therefore reveals how the
+market's expectation for the month moved when the decision became known.
+
+Let $\Delta f^{1}$ be the change in the implied rate of the current-month contract between 10
+minutes before and 20 minutes after the release, $D$ the number of days in the month and $d$
+the day of the meeting. A change in the rate decided on day $d$ only affects the remaining
+$D - d$ days of the monthly average, so the surprise in the rate itself is
+\[
+  \mathrm{MP1} = \frac{D}{D - d}\,\Delta f^{1} .
+\]
+When the meeting falls in the last seven days of the month, the scaling factor becomes large
+and noisy, and the change in the next month's contract, $\Delta f^{2}$, is used instead.
+
+\sfb{Example.} For a meeting on the 16th of a 30-day month, a 5\bp{} rise in the current-month
+implied rate means that the decided rate was $5 \times 30/14 \approx 10.7$\bp{} above what the
+market expected.
+
+\sfb{Source and checks.} The values come from the USMPD \citep{acosta2025}. We recomputed MP1 from
+the database's futures changes and matched it on all 280 statements. In the primary sample, its
+standard deviation is 6.9\bp{}.
+
+\sfb{Why MP1 and not a broader surprise.} The database also provides a surprise built from
+futures over about a year \citep{ns2018}. That measure includes the market's reaction to forward
+guidance, the very content the text score is meant to capture, so using it as a control would
+absorb the effect under study. MP1 removes only the surprise in the current decision.
 
 \end{document}
