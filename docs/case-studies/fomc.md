@@ -1537,6 +1537,37 @@ original reading whatever the edit says.
   the "the model only remembers" reading untenable. It does not prove that memory contributed
   nothing.
 
+*B, details added while writing the edits (2026-11-07, before Phi-4 read any edited text).*
+Three cases the specification had not foreseen, and one bias found on reading the texts:
+
+- **Which passage is rewritten.** Phi-4's evidence is not always one verbatim sentence: in 2004-06-30 it
+  joins two sentences that are not adjacent, and in 2006-05-10 and 2020-03-23 it is not verbatim
+  (it drops words). The passage is found by three rules, in order (`guidance_text`): the one
+  sentence that contains the span; else the shortest block of consecutive sentences that
+  contains it; else the one sentence that shares the most words with it. Every one of the 38
+  statements gets a passage; four go through the second or third rule.
+- **Identical passages get identical rewrites.** 13 of the 18 statements after the cutoff share
+  the "In considering (the extent and timing of) additional adjustments…" sentence, and three
+  pairs before the cutoff share a sentence (2020-03-15 and 2020-04-29; 2021-03-17 and
+  2021-11-03; 2024-05-01 and 2024-07-31). The same edit is used each time, so that differences
+  come from the rest of the text and not from the wording of the edit. The last pair, one
+  statement on each side of the cutoff with the same guidance sentence, is the closest
+  comparison B has.
+- **Other rate guidance left in the text.** The edit changes one passage. When another sentence
+  of the statement also speaks of the future path of the policy rate, it stays and pulls the
+  reading back towards the original, just as memory would. Reading the 38 texts, this is the
+  case for **9 of the 20 statements before the cutoff and 1 of the 18 after** (older and
+  2019–2022 statements carry several guidance sentences; for example 2004-06-30 keeps "policy
+  accommodation can be removed at a pace that is likely to be measured"). Left alone, this
+  asymmetry would bias B towards the conclusion that memory overrides the text. Each such
+  statement is flagged in the edits file (`other_rate_guidance`, with the sentence). B is
+  reported on all 38, and again **without the flagged statements (11 before, 17 after)**. The
+  reading rule is applied to both, and the result without them is the one that answers the
+  question, since only there does the edit change all the guidance the text gives.
+- The edits are built by `sources/fomc/counterfactual_edits.py`, which holds the rewrites and the
+  flags. Of Phi-4's original readings, only the forward guidance evidence was used, to find the
+  passage. No value of an edited reading had been produced when the file was committed.
+
 **Result of A (2026-11-07).** `python -m text_signals.sources.fomc.lookahead regime`:
 
 | | n | β per SD (bp) | HAC 95% interval | p |
@@ -1745,3 +1776,4 @@ and the report.
 | 2026-11-07 | ChronoGPT reader not valid: r = 0.04 with the reference against the 0.30 bar; its β (+0.28 bp per SD, p = 0.45) reported, not interpreted; post hoc, the score tracks the era and statement length, not the text | the criterion fixed before scoring decides; the raw score's 0.34 is between vintages and seen after the verdict, so not adopted; H3 stays open (§6.7) |
 | 2026-11-07 | Two further H3 tests specified before running: A, the cutoff comparison inside the press conference regime (MDE 1.47 bp per SD before, 2.51 after; reading thresholds 0.5 and 0.9); B, counterfactual hawkish, dovish and neutral rewrites of the guidance sentence of 38 statements, read by Phi-4 | the weak effect after the cutoff has a rival explanation (press conferences) that predicts it without look-ahead; the step from knowing the period to shading the score had not been tested; what was already seen of A is stated with it (§6.7) |
 | 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
+| 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
