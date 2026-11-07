@@ -1537,6 +1537,38 @@ original reading whatever the edit says.
   the "the model only remembers" reading untenable. It does not prove that memory contributed
   nothing.
 
+**Result of A (2026-11-07).** `python -m text_signals.sources.fomc.lookahead regime`:
+
+| | n | β per SD (bp) | HAC 95% interval | p |
+|---|---|---|---|---|
+| A1, press conference days, before the cutoff | 77 | +0.56 | −0.17 to +1.29 | 0.13 |
+| A1, after the cutoff | 19 | −0.40 | −2.89 to +2.09 | 0.75 |
+| A1, interaction | 96 | +1.16 | | 0.40 |
+| A2, from 2019, before the cutoff | 47 | +0.84 | +0.04 to +1.65 | 0.040 |
+| A2, after the cutoff | 19 | −0.43 | −3.10 to +2.24 | 0.75 |
+| A2, interaction | 66 | +0.54 | | 0.72 |
+
+By the rule fixed in advance, **A is inconclusive**. The A1 estimate before the cutoff (+0.56)
+falls in the band between 0.5 and 0.9, where we expected it to (+0.5 to +0.7). A2 (+0.84,
+p = 0.040) also falls just under 0.9.
+
+What A does show:
+
+- Inside the press conference regime, and before the cutoff, the effect is about half the
+  primary β (+0.56 against +1.03). The regime explains part of the decline, so the comparison
+  of 19 statements after the cutoff with the whole sample before it overstated the gap that
+  could be put down to look-ahead.
+- It does not explain all of it: the regime-matched estimate before the cutoff stays positive,
+  and in A2 it is even significant at 5%.
+- The gap between before and after inside the regime (about 1 bp per SD) is smaller than the
+  noise of the 19 statements after the cutoff (se 1.3). The interaction tests are far from
+  significant, as their power predicted.
+
+So the weakness after the cutoff can be neither put down to the regime nor taken as evidence
+of look-ahead. This is what the MDE said in advance (1.47 and 2.51 bp per SD against an effect
+of 0.5 to 1). The question is moved to B, which does not depend on the number of statements
+after the cutoff.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1712,3 +1744,4 @@ and the report.
 | 2026-11-06 | Look-ahead-free reader: ChronoGPT vintage Y − 1 for each statement of year Y, next-word likelihood score with anchor calibration, validity bar r ≥ 0.30 with the reference, all fixed before scoring | the instruction-following use failed on invented sentences; the GPU is unavailable after midnight, so the run is on CPU (§6.7) |
 | 2026-11-07 | ChronoGPT reader not valid: r = 0.04 with the reference against the 0.30 bar; its β (+0.28 bp per SD, p = 0.45) reported, not interpreted; post hoc, the score tracks the era and statement length, not the text | the criterion fixed before scoring decides; the raw score's 0.34 is between vintages and seen after the verdict, so not adopted; H3 stays open (§6.7) |
 | 2026-11-07 | Two further H3 tests specified before running: A, the cutoff comparison inside the press conference regime (MDE 1.47 bp per SD before, 2.51 after; reading thresholds 0.5 and 0.9); B, counterfactual hawkish, dovish and neutral rewrites of the guidance sentence of 38 statements, read by Phi-4 | the weak effect after the cutoff has a rival explanation (press conferences) that predicts it without look-ahead; the step from knowing the period to shading the score had not been tested; what was already seen of A is stated with it (§6.7) |
+| 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
