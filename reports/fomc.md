@@ -30,7 +30,8 @@ weaker out-of-sample fit. Look-ahead is not excluded, but there is no sign that 
 result.
 
 A **retrieval agent** over 608 FOMC documents answers 21 of 32 test questions right, with 95%
-of its citations verbatim. Its failures are instructive: quotes that are exact but attached to
+of its citations verbatim. It is a separate deliverable that measures reliability, not part of
+the signal. Its failures are instructive: quotes that are exact but attached to
 the wrong meeting, and one answer taken from memory despite a point-in-time filter.
 
 ## 1. Question and design
@@ -214,6 +215,12 @@ best, and it does not.
 The second deliverable is a question-answering agent over the full corpus: 250 statements, 262
 sets of minutes and 96 press conference transcripts, cut into 26,354 passages (§6.8).
 
+**What it is for.** The agent does not feed the tone score, the regression or the
+out-of-sample test. It answers the project's second question: when an LLM answers a research
+question and cites its sources, can the citations be trusted? Sourced question answering over a
+document corpus is the first tool a research team typically builds with an LLM, so its failure
+modes matter as much as the signal's. Section 9 shows how it could also feed the signal.
+
 **How it works:**
 - retrieval fuses BM25 and a small dense encoder (bge-small) by reciprocal rank fusion;
 - an `as_of` filter enforces the point-in-time rule;
@@ -284,6 +291,28 @@ Three lessons for anyone deploying such a tool:
   separated reading from remembering.
 - The same pipeline applies to the next corpora (minutes, transcripts, filings, other central
   banks): a source module, a schema and a protocol.
+
+## 9. Next step: tone relative to expectations
+
+The two halves of the study can be joined. The failed placebo (§3.4) suggests the market
+responds to the new tone **net of what was already known**, a surprise, and H2's crude version
+of this (the change in score from the previous statement) did not survive correction. The
+retrieval agent can measure the surprise more directly:
+
+1. For each statement, retrieve with the `as_of` filter set to the day before the release what
+   the market could read: the previous statement, the latest minutes and the latest press
+   conference.
+2. Ask the model what the new statement changes relative to those documents, with verbatim
+   evidence on both sides.
+3. Score that change, and enter it in the primary specification in place of the tone level,
+   in sample and out of sample.
+
+This "tone relative to expectations" is point-in-time by construction, since it only uses
+documents released before the statement. It turns the agent's retrieval into an input to the
+signal. Because it was suggested by a result already seen, it would have to be specified and
+frozen before any score is computed, and reported as exploratory. The agent's own lessons apply
+to it: the prompt must tie each claim to its document's date, and the score must be checked
+against answers taken from memory.
 
 ## Reproducing
 
