@@ -1737,6 +1737,25 @@ cost per statement compares. Expected limits, written before the run:
 - the anonymised texts differ from the original texts Phi-4's primary score was read from, but
   match the texts of Phi-4's anonymised run (§6.7).
 
+**Batch trial result.** 30 of 30 readings valid, in 129 s. API-equivalent cost $0.59, that is
+$0.020 per statement against $0.041 one per call: answers are shorter in a batch, about 600
+output tokens per statement against about 1,000. The maintainer saw 7% of the quota window used,
+against 10% for the 10 single calls. Quality on the same anonymised texts, with no market data:
+- decision and size right on 30 of 30 against FRED (Phi-4: 29 of 30, one invalid);
+- evidence not verbatim on 0 statements (Phi-4: 8);
+- tone correlation with Phi-4's anonymised reading: 0.92.
+
+There is no sign of anchoring. The tone does not drift with the position in the batch
+(correlation 0.03), and consecutive readings differ by 0.92 on average, against 0.78 for
+Phi-4's readings in the same order, though Phi-4 reads each statement alone.
+
+**Full scoring, decided by the maintainer: as few calls as possible.** One call for all 250 is
+ruled out by Opus's output limit (128k tokens, against about 150k needed), so the 220 statements
+not yet read in a batch, the 10 of the one-per-call trial among them, are shuffled (seed
+20261112) and read in **two calls of 110**, under the same batch procedure. All 250 Claude scores
+then come from the same procedure and the same anonymised texts. Larger batches raise the risk
+of anchoring; the same two checks are reported for each call.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and

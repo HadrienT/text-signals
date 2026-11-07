@@ -6,7 +6,7 @@ names removed), in a random order, each under a neutral code (S01, S02, …), an
 to read each statement on its own. The readings are validated one by one and stored as one
 record per statement, with the batch, the position and the batch's usage in ``meta``.
 
-Usage: ``python -m text_signals.sources.fomc.claude_batch trial``.
+Usage: ``python -m text_signals.sources.fomc.claude_batch {trial,full}``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from text_signals.claude_code import parse, run_raw
-from text_signals.llm import ExtractionRecord, text_sha256
+from text_signals.llm import ExtractionRecord, read_cache, text_sha256
 from text_signals.sources.fomc.claude_reader import MODEL, WORKDIR, trial_docs
 from text_signals.sources.fomc.extract import PROMPT, SampleDoc, all_docs
 from text_signals.sources.fomc.extraction import SCHEMA_VERSION, StatementExtraction
@@ -30,6 +30,8 @@ from text_signals.sources.fomc.lookahead import anonymise, member_names
 BATCH_VERSION = "fomc-batch-v1"
 BATCH_SEED = 20261111
 BATCH_SIZE = 30
+FULL_SEED = 20261112  # protocol §6.9: the remaining statements, shuffled, in two calls
+FULL_PARTS = 2  # Opus's output limit (128k tokens) rules out one call for 220 readings
 CACHE = Path("data/interim/fomc/extractions/claude-code") / f"{MODEL}-batch.jsonl"
 
 BATCH_RULES = (
@@ -146,36 +148,41 @@ def read_batch(docs: list[SampleDoc], batch_id: str) -> list[ExtractionRecord]:
     return records
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["trial"])
-    parser.parse_args()
-    docs = all_docs()
-    exclude = {d.doc_id for d in trial_docs(docs)}
-    batch = draw_batch(docs, exclude)
-    records = read_batch(batch, "trial-1")
+def full_parts(docs: list[SampleDoc], done: set[str]) -> list[list[SampleDoc]]:
+    """The statements not yet read in a batch, shuffled and split into ``FULL_PARTS`` calls."""
+    rng = np.random.default_rng(FULL_SEED)
+    pool = sorted((d for d in docs if d.doc_id not in done), key=lambda d: d.doc_id)
+    order = [pool[int(i)] for i in rng.permutation(len(pool))]
+    size = -(-len(order) // FULL_PARTS)
+    return [order[k : k + size] for k in range(0, len(order), size)]
+
+
+def report(records: list[ExtractionRecord]) -> None:
     meta = records[0].meta or {}
     cost = meta.get("cost_usd_equivalent_batch") or 0
     valid = sum(r.output is not None for r in records)
+    usage = meta.get("model_usage") or {}
     print(
-        f"{len(records)} statements, {valid} valid, {meta.get('duration_s_batch', 0):.0f}s, "
-        f"API-equivalent ${cost:.2f} (${cost / len(records):.3f} per statement)"
+        f"{meta.get('batch_id')}: {len(records)} statements, {valid} valid, "
+        f"{meta.get('duration_s_batch', 0):.0f}s, API-equivalent ${cost:.2f} "
+        f"(${cost / len(records):.3f} per statement), "
+        f"opus output tokens {usage.get(MODEL, {}).get('outputTokens')}",
+        flush=True,
     )
-    print(
-        {
-            m: {
-                k: u.get(k)
-                for k in (
-                    "inputTokens",
-                    "outputTokens",
-                    "cacheReadInputTokens",
-                    "cacheCreationInputTokens",
-                    "costUSD",
-                )
-            }
-            for m, u in (meta.get("model_usage") or {}).items()
-        }
-    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("cmd", choices=["trial", "full"])
+    args = parser.parse_args()
+    docs = all_docs()
+    if args.cmd == "trial":
+        exclude = {d.doc_id for d in trial_docs(docs)}
+        report(read_batch(draw_batch(docs, exclude), "trial-1"))
+        return
+    done = {r.doc_id for r in read_cache(CACHE).values() if r.output is not None}
+    for k, part in enumerate(full_parts(docs, done), start=1):
+        report(read_batch(part, f"full-{k}"))
 
 
 if __name__ == "__main__":
