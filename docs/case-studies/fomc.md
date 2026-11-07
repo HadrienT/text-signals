@@ -1671,6 +1671,52 @@ and memory agree (stated before the run), and the weaker effect after the cutoff
 unexplained but too noisy to interpret. A longer run of statements after the cutoff is still
 what would settle that.
 
+### 6.9 A frontier model as a second reader (exploratory, specified 2026-11-07)
+
+**Why.** Phi-4 is a 14 B local model. The maintainer asks whether a frontier model would read
+the statements much better and give a stronger signal. This section specifies how that is
+measured, before any of its readings is seen.
+
+**Status.** Exploratory. Phi-4 remains the reader of record of the primary test. The decision of
+2026-11-06 stands: the regression must not choose its reader. The second reader is not part of
+the Holm family, and nothing below changes a result already reported.
+
+**Reader.** `claude-opus-5-5` through Claude Code in non-interactive mode (`claude -p`), on the
+maintainer's subscription (OAuth; any `ANTHROPIC_API_KEY` is removed from the environment, so
+the API is never billed). Each statement is read by a fresh process, which sees only the prompt
+and that statement:
+- no tools (`--tools ""`), no MCP servers, no session persistence;
+- run from an empty directory, so neither the project's `CLAUDE.md` nor its memory is loaded;
+- system message: the prompt v2 system message (§5.2); user message: the v2 template with the
+  statement text;
+- schema v1, passed with `--json-schema`;
+- `--effort high`, pinned.
+
+Temperature and seed cannot be set, so the decoding is recorded as unknown (null), as for the
+reference reader. Each record stores the models used and their token counts. The tool makes one
+small Haiku call of its own besides Opus. Values come from the single answer, as for Phi-4.
+
+**What "better" means, fixed now.**
+
+1. *Validity checks that need no reader*: the decision and its size against FRED, and the share
+   of evidence spans found verbatim (§6.6). Neither depends on Claude's role as reference.
+2. *Agreement with the reference reader*: reported, but **circular**. The reference is the same
+   model, with another procedure (§6.6), so high agreement says little.
+3. *Signal*: the primary regression with `claude_tone` in place of `llm_tone`, on the same
+   statements, with β per SD, HAC p and incremental R². Also the out-of-sample gain against the
+   baseline (§6.4). All of it is reported next to Phi-4's figures.
+
+**What it cannot show.** Claude's training data run to June 2026, so only the statements of
+July, September and October 2026 lie after its cutoff. A stronger β could come from better
+reading or from knowing what followed each statement, and the cutoff split cannot tell them
+apart. Two checks that do not depend on the cutoff will be run on Claude as well: the
+counterfactual edits (§6.7, test B, the same 114 texts) and the dating probe. Even if both pass,
+a larger β is reported as "consistent with better reading, not separable from look-ahead".
+
+**Trial first.** 10 statements, drawn at random from the 250 (seed 20261110), to measure time
+and quota use. Their readings are kept and reused by a full run, since the inputs are the same.
+No market data is joined in the trial.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -2124,3 +2170,4 @@ and the report.
 | 2026-11-07 | Retrieval: a header from document metadata (type, dates) indexed with each passage, after the development questions showed recall@8 of 25%; BM25 drops zero-score passages; retrieval frozen, fusion kept | passages did not say which document they come from, so questions naming a document or date failed; the method is not switched on 8 questions; the no-header variant is reported on the test set (§6.8) |
 | 2026-11-07 | Development answers: 2 of 2 refusals right; 4 of 8 answers right, 1 half right, 1 vague, 1 wrong (C03); 14 of 18 citations verbatim, 3 punctuation only, 1 attributed to the wrong passage. Citation categories added after seeing them | the strict check counts a comma and a misattribution alike; the categories separate them, and the strict figure stays the main one (§6.8) |
 | 2026-11-07 | Prompt v2 adopted by its rule; test run once: fusion recall@8 0.59 (0.25 without headers); 21 of 32 answerable right, 6 partial, 1 wrong, 4 false refusals; 6 of 8 refusals; 60 of 63 citations verbatim; one answer from memory (U02) and two dissents attributed to the wrong meeting | retrieval is the bottleneck; citations are reliable word for word but not in time; the point-in-time rule needs the model to obey rule 1, not only the filter (§6.8) |
+| 2026-11-07 | A frontier model (claude-opus-5-5 via `claude -p`, fresh process per statement, no tools, subscription) specified as an exploratory second reader; trial on 10 statements | the maintainer asks whether a frontier model reads much better; Phi-4 stays the reader of record; a larger β cannot be separated from look-ahead, since only 3 statements fall after Claude's cutoff (§6.9) |
