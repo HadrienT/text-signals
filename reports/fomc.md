@@ -1,4 +1,4 @@
-# Reading the Fed with a local LLM: tone, the 2-year yield and look-ahead bias
+# An LLM Tone Score for FOMC Statements and the 2-Year Yield
 
 *text-signals, case study 1. Research report, November 2026. The full protocol, with every
 decision, its date and its reason, is in [`docs/case-studies/fomc.md`](../docs/case-studies/fomc.md)
