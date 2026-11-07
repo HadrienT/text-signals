@@ -1694,6 +1694,20 @@ needed at this size.
 
 - **Unit**: the paragraph, as the parsed text gives it (blocks separated by a blank line), with
   id `<doc_id>#p<n>`, its document type and its release date. A citation names this id.
+  *Made precise when the index was built (2026-11-07, before any question was written).* In
+  the parsed older minutes, half the blocks (17,533 of 34,971) are lines wrapped by the
+  source, and 688 press conference blocks are a moderator's turn ("MICHELLE SMITH.
+  Victoria."). Some opening statements run to 2,000 words, while the encoder reads about 380.
+  The passage is therefore cut by four rules (`text_signals/retrieval.py`):
+  1. blocks separated by a blank line;
+  2. a block without terminal punctuation is joined to the next;
+  3. a unit over 250 words is cut at sentence boundaries into pieces of at most 200 words;
+  4. units under 5 words are not indexed.
+
+  Result: 26,354 passages from 608 documents (statements 1,311, minutes 18,294, press
+  conferences 6,749), median 91 words. 125 passages still exceed the encoder's window; they
+  are almost all attendance lists without sentence punctuation, so truncating them loses
+  nothing a question would ask for.
 - **Two retrievers and their fusion.** Lexical: BM25 (k1 = 1.2, b = 0.75), written in the
   repository. Dense: `BAAI/bge-small-en-v1.5` (MIT, revision `5c38ec7c`, 33 M parameters,
   the query prefix of its model card, inputs truncated at 512 tokens), cosine similarity. The
