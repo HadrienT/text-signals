@@ -190,9 +190,12 @@ unexplained but too noisy to interpret.
 ## 5. Does a frontier model read better?
 
 Claude Opus 5.5 scored all 250 statements as an exploratory second reader, specified before
-any reading (§6.9). To limit recognition it read the anonymised texts, in batches shuffled
-across years under neutral codes. It ran through Claude Code on a subscription, at an
-API-equivalent cost of $4.65.
+any reading (§6.9). It ran through Claude Code on a personal subscription. To stay within its
+usage limits, the statements were read in batches (30, then 110 and 110 per call) instead of
+one per call as the local model did. Reading in batches can anchor readings on each other; no
+sign of this was found, as readings neither drift with their position nor move closer to their
+neighbours. To limit recognition, the texts were anonymised and shuffled across years under
+neutral codes.
 
 | | Phi-4 (original texts, primary) | Phi-4 (anonymised) | Claude (anonymised) |
 |---|---|---|---|

@@ -30,8 +30,8 @@
 \newcommand{\sfb}[1]{{\sffamily\bfseries #1}}
 \titleformat{\section}{\sffamily\bfseries\large\color{accent}}{\thesection}{0.7em}{}
 \titleformat{\subsection}{\sffamily\bfseries\normalsize\color{accent}}{\thesubsection}{0.6em}{}
-\titlespacing*{\section}{0pt}{1.4em}{0.5em}
-\titlespacing*{\subsection}{0pt}{1.0em}{0.3em}
+\titlespacing*{\section}{0pt}{1.15em}{0.45em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.25em}
 
 \setlist{itemsep=0.15em,topsep=0.35em,leftmargin=1.4em}
 \setlength{\parskip}{0.5em}
@@ -205,7 +205,7 @@ the baseline (Clark--West one-sided $p = 0.003$). The gain is not steady (Figure
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.7\textwidth]{../docs/case-studies/figures/fomc_oos_cumulative_gain.png}
+\includegraphics[width=0.6\textwidth]{../docs/case-studies/figures/fomc_oos_cumulative_gain.png}
 \caption{Cumulative out-of-sample squared-error gain of adding the LLM score. It is earned in
 2000--2008 and in 2022, and lost in most other years; on recent years alone, the score would
 not have helped a forecaster.}
@@ -264,8 +264,11 @@ the result.
 \section{Does a frontier model read better?}
 
 As an exploratory second reader, specified before any reading, Claude Opus scored all 250
-statements. To limit recognition, it read the anonymised texts, in batches shuffled across
-years under neutral codes, at an API-equivalent cost of about \$5.
+statements. To stay within the usage limits of a personal subscription, it read them in
+batches (30, then 110 and 110 statements per call) instead of one statement per call as the
+local model did. Reading in batches can anchor readings on each other; no sign of this was
+found, as readings neither drift with their position nor move closer to their neighbours. To
+limit recognition, the texts were anonymised and shuffled across years under neutral codes.
 
 \begin{table}[H]
 \centering\small
