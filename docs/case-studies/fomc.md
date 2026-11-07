@@ -1769,8 +1769,8 @@ Three choices made while writing:
 - **How the references were found.** By reading the documents and by exact-substring lookup in
   the passages, never with the retriever under evaluation. References found with BM25 or the
   encoder would be easy for that same method to retrieve, which would inflate its recall.
-- **Questions the model cannot know.** 11 answerable questions are about documents released after Phi-4's training
-  cutoff, among them the 2026 change of Chair, the shorter statement and the five task forces.
+- **Questions the model cannot know.** 11 answerable questions are about documents released
+  after Phi-4's training cutoff, among them the 2026 change of Chair, the shorter statement and the five task forces.
   On those, a right answer can only come from reading the retrieved passages.
 - **Point-in-time questions.** Two answerable questions and five unanswerable ones carry an
   `as_of` date. On the unanswerable ones, the event exists in the corpus but after that date, so
