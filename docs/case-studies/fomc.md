@@ -472,7 +472,7 @@ an open decision (§7).
    **Second encoder: the FOMC hawkish/dovish classifier** of Shah, Paturi and Chava (2023),
    `gtfintechlab/FOMC-RoBERTa` (RoBERTa-large, labels dovish, hawkish, neutral). Closer to the
    task, and the baseline a reader will expect the LLM to beat. Status on 2026-11-05: the model is
-   gated on Hugging Face ("manual" approval by the authors). A read token from the maintainer's
+   gated on Hugging Face ("manual" approval by the authors). A read token from my
    account authenticates but is "not in the authorized list" yet, so nothing has been downloaded
    or scored. Visible without access, to pin once it is granted: revision
    `1c0e40cc6f364fe60f92482ffa496f65647f4a34` (last modified 2026-11-03), weights only as
@@ -544,8 +544,7 @@ an open decision (§7).
      statement with a score, in release order. The model scores each statement alone; it is not
      asked to compare two texts, which would double the prompt and add a source of error.
    - Rejected: a weighted mean (weights would be arbitrary).
-   - **Deferred, not specified (2026-11-06):** a machine-learning variant suggested by the
-     maintainer, in which the weights of the five fields are learned (for example by ridge
+   - **Deferred, not specified (2026-11-06):** a machine-learning variant, in which the weights of the five fields are learned (for example by ridge
      regression) inside the expanding window of §6.4 and compared with `llm_tone` on
      out-of-sample R². A random
      train/validation/test split is ruled out (neighbouring statements share their wording); a
@@ -947,7 +946,7 @@ are not scored against the model. 15 of the 60 are labelled a second time, later
 first answers in view, to measure the labeller's own consistency (Cohen's κ). The statements are
 shown under shuffled codes (S01–S60, P1–P5), with no date.
 
-- **Labeller.** The maintainer, who is not a monetary-policy specialist. The labeller applies the
+- **Labeller.** Myself; I am not a monetary-policy specialist. The labeller applies the
   written definitions; the binding ones are the schema's field descriptions (§5.2), shown with a
   plain-French explanation (`HELP_FR`, guide `fomc-label-guide-v1`). The labeller fills the same
   fields as the model, without evidence spans, and may mark any field "unsure". Every field needs
@@ -956,7 +955,7 @@ shown under shuffled codes (S01–S60, P1–P5), with no date.
 - **Practice review.** After the five practice statements, the labeller's reading is discussed
   with Claude Code. This touches only the practice statements, never the 60.
 - **Listening aid.** The labeller listens to each statement read aloud while the sentence being
-  read is highlighted. The audio is made by the maintainer's local AudioBook pipeline (Fish Audio
+  read is highlighted. The audio is generated locally by a text-to-speech model (Fish Audio
   S2-Pro, reference voice `phil-benson`, a LibriVox reader) from a listening PDF
   (`write_listening_pdf`) in which fractions are written in words ("5 and a quarter percent")
   and characters the PDF font cannot draw are made plain; the wording is otherwise the
@@ -965,7 +964,7 @@ shown under shuffled codes (S01–S60, P1–P5), with no date.
 - **Not seen by the labeller:** dates, URLs, market data and model outputs.
 
 **Hand labelling stopped (2026-11-06), replaced by a reference reader.** After the five
-practice statements the maintainer judged the labelling too long to finish, and the practice
+practice statements I judged the labelling too long to finish, and the practice
 review showed systematic misreadings that a non-specialist would need more training to avoid
 (the sign of "gradual increases", "empty" against 0). No label of the 60 exists and no model
 output on the sample had been seen when this was decided. The five practice labels stay in
@@ -1043,7 +1042,7 @@ Findings, read from the outputs:
 `phi-4-Q8_0.gguf`, sha256 `f68df5d3…a110`, MIT licence). Chosen for a reading task in English
 only: its model card gives English as the intended language and a training-data cutoff of June
 2024, an official date, which the look-ahead tests need (§6.7); for Qwen3-30B-A3B-Instruct-2507
-only third-party listings give one (June 2025). Served by the AgenticEnv profile `research`
+only third-party listings give one (June 2025). Served by `llama-server`
 (context 16,384), same prompt v2, same decoding.
 
 | | Qwen3-Coder-30B | Phi-4 | Claude (reference) |
@@ -1178,11 +1177,11 @@ Reading of the table:
 - **No variant gives both.** Free copy gives the best reading with a few non-verbatim spans; the
   constrained variants guarantee the spans and lose some reading.
 
-**Procedure chosen (2026-11-06, by the maintainer): free copy with the repair loop.** Prompt
+**Procedure chosen (2026-11-06): free copy with the repair loop.** Prompt
 v2, schema v1, at most one repair turn (`fomc-repair-v1`), Phi-4 Q8_0. The values the regression
 uses are those of free copy, the best reading (the repair moved 2 values of 65 statements and
 left every κ unchanged); the repair only lowers the share of non-verbatim spans, and the ones
-left are flagged in each record (`problems_left`). The reason, in the maintainer's words: the
+left are flagged in each record (`problems_left`). The reason: the
 regression is the goal, so the reading with the best scores wins over perfect citations.
 
 **Rule for replacing the local model by Claude.** The project builds a local pipeline first.
@@ -1244,7 +1243,7 @@ C07 and C28 also show the size problem again: the text gives only the new range 
 raise; Phi-4 writes +25, Claude leaves it empty. `change_bp` is a quality check only (§5.2) and
 stays so.
 
-**Procedure revised after the confirmation (2026-11-06, by the maintainer): the values come from
+**Procedure revised after the confirmation (2026-11-06): the values come from
 the first answer.** One run with the repair loop gives both: the **values** that enter the
 scores are read from the first answer (`--first`; identical to a single pass), and the
 **repaired answer is kept for the audit of the evidence only** (6 non-verbatim spans left on 183
@@ -1671,6 +1670,143 @@ and memory agree (stated before the run), and the weaker effect after the cutoff
 unexplained but too noisy to interpret. A longer run of statements after the cutoff is still
 what would settle that.
 
+### 6.9 A frontier model as a second reader (exploratory, specified 2026-11-07)
+
+**Why.** Phi-4 is a 14 B local model. The question is whether a frontier model would read
+the statements much better and give a stronger signal. This section specifies how that is
+measured, before any of its readings is seen.
+
+**Status.** Exploratory. Phi-4 remains the reader of record of the primary test. The decision of
+2026-11-06 stands: the regression must not choose its reader. The second reader is not part of
+the Holm family, and nothing below changes a result already reported.
+
+**Reader.** `claude-opus-5-5` through Claude Code in non-interactive mode (`claude -p`), on a
+Claude subscription (OAuth; any `ANTHROPIC_API_KEY` is removed from the environment, so
+the API is never billed). Each statement is read by a fresh process, which sees only the prompt
+and that statement:
+- no tools (`--tools ""`), no MCP servers, no session persistence;
+- run from an empty directory, so neither the project's `CLAUDE.md` nor its memory is loaded;
+- system message: the prompt v2 system message (§5.2); user message: the v2 template with the
+  statement text;
+- schema v1, passed with `--json-schema`;
+- `--effort high`, pinned.
+
+Temperature and seed cannot be set, so the decoding is recorded as unknown (null), as for the
+reference reader. Each record stores the models used and their token counts. The tool makes one
+small Haiku call of its own besides Opus. Values come from the single answer, as for Phi-4.
+
+**What "better" means, fixed now.**
+
+1. *Validity checks that need no reader*: the decision and its size against FRED, and the share
+   of evidence spans found verbatim (§6.6). Neither depends on Claude's role as reference.
+2. *Agreement with the reference reader*: reported, but **circular**. The reference is the same
+   model, with another procedure (§6.6), so high agreement says little.
+3. *Signal*: the primary regression with `claude_tone` in place of `llm_tone`, on the same
+   statements, with β per SD, HAC p and incremental R². Also the out-of-sample gain against the
+   baseline (§6.4). All of it is reported next to Phi-4's figures.
+
+**What it cannot show.** Claude's training data run to June 2026, so only the statements of
+July, September and October 2026 lie after its cutoff. A stronger β could come from better
+reading or from knowing what followed each statement, and the cutoff split cannot tell them
+apart. Two checks that do not depend on the cutoff will be run on Claude as well: the
+counterfactual edits (§6.7, test B, the same 114 texts) and the dating probe. Even if both pass,
+a larger β is reported as "consistent with better reading, not separable from look-ahead".
+
+**Trial first.** 10 statements, drawn at random from the 250 (seed 20261110), to measure time
+and quota use. Their readings are kept and reused by a full run, since the inputs are the same.
+No market data is joined in the trial.
+
+**Trial result (10 statements, one per call).** 10 valid readings, about 10 s each; API-equivalent
+cost $0.41, counted against the subscription quota. Decision and size right on all 10 for both
+readers (FRED). Evidence not verbatim: 0 statements for Claude, 2 for Phi-4. Claude gives −2 to
+explicit commitments (2003 "considerable period", the 2012 date and thresholds) where Phi-4
+gives −1. The judgement that this follows the schema better is Claude's own, so it is not
+independent. About 65% of a call's cost is the answer, which every statement needs in full,
+and about 10% is the fixed part.
+
+**Batch trial (2026-11-07), to measure the quota cost of one batch.**
+30 statements, drawn at random from the 240 not read in the trial (seed 20261111), go in one
+call in a random order, each under a neutral code (S01…S30). The texts are the **anonymised**
+versions (§6.7), to limit recognition. The prompt v2 system message is followed by an
+instruction to read each statement on its own and return one reading per code; the schema is a
+list of 30 readings (`sources/fomc/claude_batch.py`). Effort high, as in the trial, so that the
+cost per statement compares. Expected limits, written before the run:
+- reading 30 texts in one context can anchor readings on each other (§6.6, the reference
+  reader);
+- the anonymised texts differ from the original texts Phi-4's primary score was read from, but
+  match the texts of Phi-4's anonymised run (§6.7).
+
+**Batch trial result.** 30 of 30 readings valid, in 129 s. API-equivalent cost $0.59, that is
+$0.020 per statement against $0.041 one per call: answers are shorter in a batch, about 600
+output tokens per statement against about 1,000. It used 7% of the subscription's usage window,
+against 10% for the 10 single calls. Quality on the same anonymised texts, with no market data:
+- decision and size right on 30 of 30 against FRED (Phi-4: 29 of 30, one invalid);
+- evidence not verbatim on 0 statements (Phi-4: 8);
+- tone correlation with Phi-4's anonymised reading: 0.92.
+
+There is no sign of anchoring. The tone does not drift with the position in the batch
+(correlation 0.03), and consecutive readings differ by 0.92 on average, against 0.78 for
+Phi-4's readings in the same order, though Phi-4 reads each statement alone.
+
+**Full scoring: as few calls as possible.** One call for all 250 is
+ruled out by Opus's output limit (128k tokens, against about 150k needed), so the 220 statements
+not yet read in a batch, the 10 of the one-per-call trial among them, are shuffled (seed
+20261112) and read in **two calls of 110**, under the same batch procedure. All 250 Claude scores
+then come from the same procedure and the same anonymised texts. Larger batches raise the risk
+of anchoring; the same two checks are reported for each call.
+
+**Results (2026-11-07).** All 250 readings valid, in three calls (30, 110 and 110 statements;
+443 s and 505 s for the two large ones). API-equivalent cost for all three: $4.65. 241 statements
+have a tone score; the other 9 fill no stance field.
+
+| Call | Decision right: Claude / Phi-4 (anonymised) | Size right (Claude) | Evidence not verbatim: Claude / Phi-4 | Tone vs position | Mean change between consecutive readings: Claude / Phi-4 |
+|---|---|---|---|---|---|
+| trial-1 (30) | 1.00 / 0.97 | 1.00 | **0%** / 28% | 0.03 | 0.92 / 0.78 |
+| full-1 (110) | 0.95 / 0.95 | 0.89 | **0%** / 37% | −0.16 | 1.08 / 0.87 |
+| full-2 (110) | 0.96 / 0.96 | 0.93 | **0%** / 34% | 0.07 | 0.96 / 0.77 |
+
+The decision is read equally well by both. Claude quotes its evidence exactly every time, while
+Phi-4 fails to on about a third of the statements. There is no clear sign of anchoring in the
+large batches.
+
+*Signal* (`python -m text_signals.sources.fomc.claude_signal`). The primary specification, on
+the same 239 statements of the primary sample for every score. Only 3 of them fall after
+Claude's cutoff.
+
+| Score | β per SD (bp) | HAC p | Incremental R² | Out-of-sample R² vs baseline | Clark–West p |
+|---|---|---|---|---|---|
+| Phi-4, original texts (primary) | 0.97 | 0.006 | 0.022 | 0.026 | 0.003 |
+| Phi-4, anonymised texts | 0.84 | 0.012 | 0.018 | 0.013 | 0.016 |
+| **Claude, anonymised texts** | **0.90** | **0.007** | 0.021 | 0.004 | 0.007 |
+| Claude next to Phi-4 (original) | 0.40 | 0.57 | | | |
+| Phi-4 (original) next to Claude | 0.61 | 0.39 | | | |
+
+Claude's tone correlates at 0.89 with Phi-4's reading of the same anonymised texts (0.88 with
+the original reading).
+
+Reading:
+
+- **The frontier model does not find a much stronger signal.** On the like-for-like comparison
+  (anonymised texts), Claude's β is 0.90 bp per SD against 0.84 for Phi-4, with the same
+  incremental R², and both are below Phi-4's primary score on the original texts. Out of sample,
+  Claude does worse than either Phi-4 score (0.4% against 1.3% and 2.6%), though the Clark–West
+  test still rejects in its favour. Together, neither score adds to the other: they measure the
+  same thing.
+- **Claude extracts more cleanly.** All of its evidence is verbatim, against two thirds of
+  Phi-4's statements, and it follows the schema's definitions more closely on explicit forward
+  guidance (§6.9, trial). Cleaner extraction does not translate into a stronger link with the
+  2-year yield. The tone of an FOMC statement is coarse enough that a 14 B model reads what
+  matters for the market.
+- **What this says about look-ahead (exploratory, not a test of H3).** Claude's training data
+  cover all but 3 statements, and it knows the history of the period better than Phi-4. If
+  knowledge of what followed drove the scores, the model that knows most should fit best. It
+  does not: same β, worse out of sample. This does not prove the absence of look-ahead, since
+  Claude read anonymised texts in batches, unlike Phi-4's primary score. It is consistent with
+  test B: the scores follow the text.
+- **For a research team**, at this task a local 14 B model gives the same signal as a frontier
+  model, for free and without sending a document out. The frontier model's advantage is
+  auditability (exact evidence), not signal.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1678,8 +1814,277 @@ what would settle that.
 - About 50 hand-written questions with reference answers and passages.
 - Metrics: retrieval recall@k, citation faithfulness (does the cited passage support the claim?),
   correct refusals.
-- Stack, decided in week 4: `kbase` from AgenticEnv (pgvector, hybrid retrieval) or a light
-  in-repo index. The corpus is small.
+- Stack, decided in week 4: an existing local retrieval service (pgvector, hybrid retrieval) or a
+  light in-repo index. The corpus is small.
+
+**Design (fixed 2026-11-07, before any code was written or any question was run).**
+
+*Stack: a light in-repo index, not `kbase`.* The corpus is about 42,000 paragraphs (250
+statements: 1,323; 262 minutes: 34,971; 96 press conferences: 6,017), 2.7 million words, which
+fits in memory. `kbase` needs a running PostgreSQL and a second repository, so a reader could
+not rerun the pipeline from this repository alone; FRED was fetched in-repo for the same reason
+(§12). Its default embedding is a hashing bag of words, not a semantic model. Nothing in it is
+needed at this size.
+
+*Retrieval.*
+
+- **Unit**: the paragraph, as the parsed text gives it (blocks separated by a blank line), with
+  id `<doc_id>#p<n>`, its document type and its release date. A citation names this id.
+  *Made precise when the index was built (2026-11-07, before any question was written).* In
+  the parsed older minutes, half the blocks (17,533 of 34,971) are lines wrapped by the
+  source, and 688 press conference blocks are a moderator's turn ("MICHELLE SMITH.
+  Victoria."). Some opening statements run to 2,000 words, while the encoder reads about 380.
+  The passage is therefore cut by four rules (`text_signals/retrieval.py`):
+  1. blocks separated by a blank line;
+  2. a block without terminal punctuation is joined to the next;
+  3. a unit over 250 words is cut at sentence boundaries into pieces of at most 200 words;
+  4. units under 5 words are not indexed.
+
+  Result: 26,354 passages from 608 documents (statements 1,311, minutes 18,294, press
+  conferences 6,749), median 91 words. 125 passages still exceed the encoder's window; they
+  are almost all attendance lists without sentence punctuation, so truncating them loses
+  nothing a question would ask for.
+- **Two retrievers and their fusion.** Lexical: BM25 (k1 = 1.2, b = 0.75), written in the
+  repository. Dense: `BAAI/bge-small-en-v1.5` (MIT, revision `5c38ec7c`, 33 M parameters,
+  the query prefix of its model card, inputs truncated at 512 tokens), cosine similarity. The
+  two rankings are fused by reciprocal rank fusion (k = 60), and the top 8 paragraphs go to the
+  model. BM25 alone and the encoder alone are reported as baselines.
+- **Point-in-time filter.** A query can carry an `as_of` date. Only paragraphs released on or
+  before it can be retrieved, using the release date of their document, as everywhere else in
+  the study. A question asked "as of" a date gets no help from documents written after it. This
+  is tested.
+
+*Answering.* The local model gets the question and the 8 paragraphs, each with its id, and
+answers in a JSON schema: an answer, a list of citations (paragraph id and a verbatim quote),
+and a refusal flag for when the paragraphs do not support an answer. Model: Phi-4, the reader
+of the study, under a versioned prompt, at temperature 0. Code checks two things about each
+citation: that its paragraph was among those retrieved, and that its quote occurs verbatim in
+that paragraph.
+
+*Evaluation set.* About 50 questions, written with their reference answer and reference
+paragraph ids by Claude (claude-opus-5-5) from the corpus, as for the reference reader (§6.6).
+They are committed before the system answers any of them. Their types:
+
+- factual lookups in one document ("what did the statement of … say about …");
+- changes in wording across documents ("how did the inflation wording change between 2021 and
+  2023?");
+- press conference and minutes passages;
+- about 10 questions the corpus cannot answer, or that ask "as of" a date before the event.
+  The correct behaviour on these is a refusal.
+
+The set is split before any run: 10 development questions, the only ones used to adjust the
+system (prompt, k), and 40 test questions, run once. A sample of the reference answers
+is to be checked by hand.
+
+*Metrics.*
+
+- **Retrieval**: recall@k for k = 1, 5, 8 (the share of answerable questions with a reference
+  paragraph in the top k) and the mean reciprocal rank, for BM25, the encoder and the fusion.
+- **Citations**: the verbatim rate (code), and **faithfulness**: does the cited passage support
+  the claim? This is judged by Claude, which sees no market data (§12), with a sample
+  to be checked by hand.
+- **Refusals**: correct refusals on the unanswerable questions, false refusals on the
+  answerable ones.
+
+This is an evaluation, not a hypothesis test: nothing in the study's conclusions depends on it,
+and it has no pass bar. It is reported in full, failures included.
+
+*The evaluation set as written (2026-11-07, committed before the agent answered any question).*
+`data/labels/fomc_qa_v1.json` holds 50 questions:
+
+| Type | n | Examples |
+|---|---|---|
+| lookup | 17 | the thresholds of December 2012; the dissents of October 2025 and October 2026 |
+| change | 7 | "transitory" from July to December 2021; "patient" to "measured" in 2004 |
+| press conference | 8 | Bernanke on "extended period" (April 2011); Warsh's five task forces (June 2026) |
+| minutes | 8 | the 2 percent goal adopted in January 2012; the June 2026 discussion of the statement |
+| unanswerable | 10 | outside the corpus, or asked `as_of` a date before the event |
+
+Three choices made while writing:
+
+- **How the references were found.** By reading the documents and by exact-substring lookup in
+  the passages, never with the retriever under evaluation. References found with BM25 or the
+  encoder would be easy for that same method to retrieve, which would inflate its recall.
+- **Questions the model cannot know.** 11 answerable questions are about documents released
+  after Phi-4's training cutoff, among them the 2026 change of Chair, the shorter statement and the five task forces.
+  On those, a right answer can only come from reading the retrieved passages.
+- **Point-in-time questions.** Two answerable questions and five unanswerable ones carry an
+  `as_of` date. On the unanswerable ones, the event exists in the corpus but after that date, so
+  a correct refusal requires the filter to work and the model to refuse rather than answer from
+  memory. U10 is an example: why the Chair said the FOMC raised rates by 75 basis points in June
+  2022, asked as of 1 June 2022.
+
+`qa_eval.validate` checks that every reference passage exists in the index and, for an `as_of`
+question, was released on or before that date. The split (seed 20261109, two development
+questions per type) is stored in `data/labels/fomc_qa_v1_split.json`: development C03, C05, L13,
+L17, M03, M04, P03, P06, U09 and U10, test the other 40.
+
+*Retrieval on the development questions, and the one change it led to (2026-11-07).* As
+specified, BM25, the encoder and their fusion were measured on the 8 answerable development
+questions. First result: recall@8 of 25% for all three (2 of 8). Most failures had a single
+cause. A passage does not say which document it comes from. "The Federal Open Market Committee
+approved the following statement for release by a 9 – 3 vote" contains neither the date nor the
+words "July 2026", which only the document's metadata holds. And the minutes, which make up
+18,294 of the 26,354 passages and discuss the same topics, crowd out the statements.
+
+**Change: a header from the document's metadata is indexed with each passage**, for example
+"FOMC statement released July 29, 2026." or "Minutes of the FOMC meeting held January 26, 2022,
+released February 16, 2022." The header uses the document type and dates only, nothing from
+the questions. It is not part of the text a citation quotes. A second fix came from a unit test:
+BM25 no longer returns passages that share no term with the query. It changed no development
+result.
+
+| Development questions (n = 8) | recall@1 | recall@5 | recall@8 | MRR@8 |
+|---|---|---|---|---|
+| BM25, no header | 0.12 | 0.25 | 0.25 | 0.16 |
+| Encoder, no header | 0.00 | 0.25 | 0.25 | 0.05 |
+| Fusion, no header | 0.00 | 0.25 | 0.25 | 0.06 |
+| BM25, header | 0.25 | 0.50 | **0.75** | 0.38 |
+| Encoder, header | 0.25 | 0.25 | 0.38 | 0.27 |
+| Fusion, header | 0.25 | **0.62** | 0.62 | 0.41 |
+
+The remaining failures: the two change questions (C03 and C05), where the minutes that
+discuss the change in wording rank above the statements that make it; and P06, where the right
+press conference is found but not the right paragraph.
+
+**Retrieval is frozen here.** The fusion stays the method passed to the model, as specified,
+although BM25 alone did better on these 8 questions. The difference is one question, and the
+test set reports all three methods, with and without the header, so the header's contribution
+is also measured on questions it was not designed on.
+
+*Answering, fixed before any answer was produced (2026-11-07).* `sources/fomc/qa_answer.py`:
+
+- **Prompt `fomc-qa-v1`.** The rules are written out in the system message, since
+  `llama-server` uses the schema only as a grammar (§5.2):
+  1. use only the passages;
+  2. refuse rather than guess;
+  3. support every claim with a quote copied word for word from the passage text, not from
+     its header;
+  4. for an `as_of` question, answer as someone on that date would.
+
+  The user message gives the question (with its `as_of` date) and the 8 passages, each with
+  its id, its header and its text.
+- **Schema `fomc-qa-answer-v1`**: `refused` first, so the model decides whether to answer
+  before writing anything; then `answer`, then `citations`. The grammar restricts a cited id to
+  the 8 shown, so a citation cannot name a passage that was not retrieved; the check is kept
+  anyway. A refusal has no answer and no citation, and an answer has at least one citation.
+  Otherwise the output is invalid.
+- **Model**: Phi-4, temperature 0, the default decoding of the study. Records are cached with
+  model, weights file, prompt and schema versions.
+- **Verbatim check**: a quote must occur in its passage's text up to case, spacing and
+  typographic quotes, the rule of §6.6.
+- **Metric added to the list above**: *correctness*, whether the answer agrees with the
+  reference answer, judged by Claude like faithfulness. Without it, a well-cited but wrong
+  answer would go unnoticed. The judgments are stored with a short reason for each, and a
+  sample is to be checked by hand.
+
+*Answers on the development questions (2026-11-07).* Phi-4 answered the 10 development
+questions: 0 invalid outputs, both unanswerable questions refused (U09, and U10, the
+point-in-time trap). My reading of the eight answers (the judging procedure comes with the test
+set):
+
+| | Answer | Why |
+|---|---|---|
+| L17, P03, M04 | right, well cited | the reference passages were retrieved |
+| M03 | right | one quote ends the sentence early with a period |
+| L13 | half right | the 9 to 3 vote is right; the passage naming the dissenters was not retrieved, and the model says it cannot tell what they wanted |
+| C05 | right, from the minutes | the statements were not retrieved, but the minutes that discuss the change were |
+| C03 | **wrong** | the statements were not retrieved; the answer attributes to March 2009 a discussion from the minutes of January 2009 |
+| P06 | vague | it cites minutes saying the Chairman should describe a path for purchases, without the path |
+
+Three of the four failures follow a retrieval failure. **Citations**: 14 of 18 pass the specified
+check. Of the other four, three are punctuation only: "p.m:" for "p.m.:", a sentence ended
+early with a period, and single quotes where the text has double ones. The fourth quotes words
+that are in another of the shown passages. No quote was invented. The specified check counts a
+comma and a misattribution the same way, so a finer reading is added, **decided after these
+answers and labelled as such**. Each citation is classed as *exact*, *punctuation only* (the
+same words in the same order, punctuation ignored), *wrong passage* (its words are in another
+shown passage) or *not found*. The specified check stays the main figure.
+
+*Prompt `fomc-qa-v2`, decided after the development answers, before running
+it.* One revision, with two generic rules added to v1:
+
+5. attribute every fact to the document named in its passage header, with that document's
+   date (the C03 failure);
+6. if the passages answer only part of the question, answer that part and say which part they
+   do not cover, instead of filling the gap.
+
+Rule 3 now also asks for punctuation and quotation marks exactly as in the passage. v2 is run
+once on the 10 development questions. **Decision rule, fixed now**: v2 is adopted unless it
+does worse than v1 on those questions in any of four ways:
+- more invalid outputs;
+- fewer correct refusals;
+- a lower share of citations passing the strict check;
+- an answer judged right under v1 becoming wrong.
+
+Otherwise v1 is kept. Either way the prompt is then frozen and the 40 test questions are run
+once.
+
+*Development run of v2.* 0 invalid outputs; 2 of 2 refusals correct; 16 of 19 citations pass the
+strict check (v1: 14 of 18), none attributed to the wrong passage (v1: 1). No answer judged right
+under v1 became wrong. **v2 is adopted by the rule.** The gain is small: C03 is still wrong. Rule 6
+did not fire, and the answer now dates the 2012 thresholds to March 2014. The failure starts in
+retrieval, and a prompt cannot repair it.
+
+**Test results (2026-11-07, run once, prompt v2 frozen).**
+`python -m text_signals.sources.fomc.qa_eval retrieval --split test` and `… answers --split test`.
+The judgments, with a reason for each, are in `data/labels/fomc_qa_v1_judgments_test.json`.
+
+*Retrieval* (32 answerable test questions):
+
+| | recall@1 | recall@5 | recall@8 | MRR@8 |
+|---|---|---|---|---|
+| BM25 | 0.22 | 0.47 | 0.50 | 0.31 |
+| Encoder | 0.34 | 0.44 | 0.53 | 0.40 |
+| **Fusion** | 0.28 | 0.50 | **0.59** | 0.38 |
+| BM25, no header | 0.06 | 0.19 | 0.31 | 0.12 |
+| Encoder, no header | 0.03 | 0.19 | 0.25 | 0.10 |
+| Fusion, no header | 0.09 | 0.22 | 0.25 | 0.14 |
+
+On questions it was not designed on, the header more than doubles recall@8 (0.25 → 0.59 for the
+fusion). Unlike on the 8 development questions, the fusion is the best of the three at
+recall@8, which supports keeping it.
+
+*Answers* (40 test questions):
+
+| | Result |
+|---|---|
+| Invalid outputs | 0 of 40 |
+| Answerable questions answered | 28 of 32 (4 false refusals) |
+| … of which right / partial / wrong | **21 / 6 / 1** |
+| … of which supported / partly / unsupported by their citations | 25 / 1 / 2 |
+| Unanswerable questions refused | **6 of 8** |
+| Citations passing the strict check | **60 of 63 (95%)**: 2 punctuation only, 1 not found, 0 wrong passage |
+| Right, questions before Phi-4's cutoff | 15 of 22 |
+| Right, questions after it | 6 of 10 |
+
+Reading:
+
+- **When the right passage is retrieved, the answer is almost always right and well cited.** The
+  partial answers (L14, C02, C06, C07, P04) and three of the four false refusals (L08, L16, C01)
+  come with a reference passage missing from the top 8. Retrieval is the bottleneck, as on the
+  development questions. The fourth false refusal (P02) had its reference passage at rank 3.
+- **Citations are reliable at the level of the words.** No quote was invented. The one not found
+  (P08) joins two sentences of the same passage, as Phi-4 did with evidence spans (§6.6).
+- **The errors that matter are attributions in time.** L09 names George, who dissented in June
+  2022, as the dissenter of March 2022 (it was Bullard). L10 names Hammack, who dissented in
+  December 2024, for September 2024 (it was Bowman). Each quote is exact, but it is attached to
+  the wrong meeting. The citation check cannot catch this; only reading the header's date
+  against the claim can. A user who checks the quote alone would be misled.
+- **One answer came from memory: U02, a look-ahead in miniature.** Asked as of 1 December 2015,
+  before the first increase, the model answered "0.25–0.50 percent". That figure is right after
+  the fact, but none of the passages shown contains it (they cite the increases of 2005–2006).
+  The as-of filter worked; the model ignored rule 1. The point-in-time rule therefore cannot
+  rest on the retriever alone: a model that knows the period can bring the answer in anyway.
+  This is the agent-level counterpart of the dating probe (§6.7).
+- **U01 was an imperfect trap**, my error in writing it. FOMC minutes do report on foreign
+  central banks. The model used such a passage but dated an ECB announcement to the wrong
+  meeting, so the answer is wrong either way.
+- **Before and after the cutoff**, the share of right answers is similar (15 of 22 and 6 of 10).
+  The agent reads documents it cannot know about as well as those it may remember, which is
+  what retrieval is for.
+
+A sample of the judgments is still to be checked by hand.
 
 ---
 
@@ -1816,11 +2221,11 @@ and the report.
 | 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
 | 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
 | 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
-| 2026-11-06 | Labelling sample v1 drawn (60 + 5 practice, 15 second pass), labeller listens with an audio aid | stratified by decade and regime; the maintainer is not a specialist, so definitions, practice and a consistency check carry the quality |
+| 2026-11-06 | Labelling sample v1 drawn (60 + 5 practice, 15 second pass), labeller listens with an audio aid | stratified by decade and regime; the labeller is not a specialist, so definitions, practice and a consistency check carry the quality |
 | 2026-11-06 | Prompt v2: the schema and its definitions go into the system message | `llama-server` uses the schema as a grammar only, so v1 never showed the model the definitions (§5.2) |
-| 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for the maintainer; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
+| 2026-11-06 | Hand labelling stopped after practice; Claude is the reference reader, plus checks against FRED and verbatim evidence | too long for one non-specialist labeller; decided before any model output on the sample was seen; the reference measures consistency, not truth (§6.6) |
 | 2026-11-06 | First run: Qwen3-Coder-30B inverts the balance-sheet sign of new purchases | κ 0.07 against the reference on that field; to fix by prompt or model before scoring, and to report (§6.6) |
-| 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, AgenticEnv profile `research`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
+| 2026-11-06 | Second local model: Phi-4 (Q8_0, official GGUF, served by `llama-server`) | English-only reading task; official training cutoff (June 2024) for the look-ahead tests; tone correlation 0.91 with the reference and no sign inversion (§6.6) |
 | 2026-11-06 | Repair loop added and measured (one turn, `fomc-repair-v1`): Phi-4 non-verbatim spans 28 → 17, 2 values moved | the reference had checked its own spans; the loop gives the local model the same step; kept as a measured procedure, not adopted (§6.6) |
 | 2026-11-06 | Schema v2 (evidence by sentence number) measured and not adopted | no hallucination and twice as fast, but forward guidance κ falls from 0.84 to 0.30: without copying the sentence the model misjudges it (§6.6) |
 | 2026-11-06 | The variant finally chosen will be confirmed outside the 65 | prompt v2, the repair loop and schema v2 were all judged on the same sample |
@@ -1849,3 +2254,11 @@ and the report.
 | 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
 | 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
 | 2026-11-07 | B run: the score follows the text by the pre-set rule; hawkish > dovish FG on 100% of statements before and after the cutoff; the gap is +0.33 larger before (95% −0.07 to +0.68), +0.40 without flagged statements | memory would make known statements resist the edit; they move at least as much; H3 restated: no sign that period knowledge drives the score, borderline shading not excluded (§6.7) |
+| 2026-11-07 | Retrieval agent: in-repo index (paragraph units, BM25 + bge-small fused by RRF, point-in-time `as_of` filter), Phi-4 answers with verified verbatim citations; 50 questions written and committed before any run, 10 dev / 40 test | `kbase` needs Postgres and a second repository, so the pipeline would not rerun from this one; the corpus fits in memory; the dev/test split keeps the questions from being used to tune the system (§6.8) |
+| 2026-11-07 | Passage rules for the index (join wrapped lines, cut units over 250 words, drop units under 5 words): 26,354 passages | the parsed text's blocks were often wrapped lines or a moderator's turn, and some opening statements exceed what the encoder reads (§6.8) |
+| 2026-11-07 | Evaluation set v1: 50 questions (17 lookup, 7 change, 8 press conference, 8 minutes, 10 unanswerable), references found without the retriever, split fixed before any answer | references found with the retriever would inflate its recall; 11 questions are after Phi-4's cutoff, so only reading can answer them (§6.8) |
+| 2026-11-07 | Retrieval: a header from document metadata (type, dates) indexed with each passage, after the development questions showed recall@8 of 25%; BM25 drops zero-score passages; retrieval frozen, fusion kept | passages did not say which document they come from, so questions naming a document or date failed; the method is not switched on 8 questions; the no-header variant is reported on the test set (§6.8) |
+| 2026-11-07 | Development answers: 2 of 2 refusals right; 4 of 8 answers right, 1 half right, 1 vague, 1 wrong (C03); 14 of 18 citations verbatim, 3 punctuation only, 1 attributed to the wrong passage. Citation categories added after seeing them | the strict check counts a comma and a misattribution alike; the categories separate them, and the strict figure stays the main one (§6.8) |
+| 2026-11-07 | Prompt v2 adopted by its rule; test run once: fusion recall@8 0.59 (0.25 without headers); 21 of 32 answerable right, 6 partial, 1 wrong, 4 false refusals; 6 of 8 refusals; 60 of 63 citations verbatim; one answer from memory (U02) and two dissents attributed to the wrong meeting | retrieval is the bottleneck; citations are reliable word for word but not in time; the point-in-time rule needs the model to obey rule 1, not only the filter (§6.8) |
+| 2026-11-07 | A frontier model (claude-opus-5-5 via `claude -p`, fresh process per statement, no tools, subscription) specified as an exploratory second reader; trial on 10 statements | does a frontier model read much better? Phi-4 stays the reader of record; a larger β cannot be separated from look-ahead, since only 3 statements fall after Claude's cutoff (§6.9) |
+| 2026-11-07 | Second reader run in batches (30, then two calls of 110, anonymised texts, random order); results: β 0.90 bp per SD (p = 0.007) against 0.84 for Phi-4 on the same texts, out-of-sample R² 0.4%; all evidence verbatim | a batch halves the quota per statement; one call for 250 exceeds Opus's output limit; the frontier model extracts more cleanly but finds no stronger signal (§6.9) |

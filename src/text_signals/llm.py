@@ -82,6 +82,9 @@ class ExtractionRecord(BaseModel):
     # earlier answers rejected by the verifier, in order; the fields above are the last answer
     rejected: list[Attempt] = []
     problems_left: list[str] = []  # what the verifier still found in the last answer
+    # Backend details that the fields above do not hold, e.g. the models and token counts of a
+    # Claude Code run (text_signals.claude_code).
+    meta: dict[str, Any] | None = None
 
     @property
     def cache_key(self) -> tuple[str, str, str, str, str]:

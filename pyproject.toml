@@ -3,6 +3,7 @@ name = "text-signals"
 version = "0.1.0"
 description = "Extracting and evaluating investment signals from text corpora with local LLMs."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
