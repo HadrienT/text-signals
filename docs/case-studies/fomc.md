@@ -1753,6 +1753,36 @@ reference answers.
 This is an evaluation, not a hypothesis test: nothing in the study's conclusions depends on it,
 and it has no pass bar. It is reported in full, failures included.
 
+*The evaluation set as written (2026-11-07, committed before the agent answered any question).*
+`data/labels/fomc_qa_v1.json` holds 50 questions:
+
+| Type | n | Examples |
+|---|---|---|
+| lookup | 17 | the thresholds of December 2012; the dissents of October 2025 and October 2026 |
+| change | 7 | "transitory" from July to December 2021; "patient" to "measured" in 2004 |
+| press conference | 8 | Bernanke on "extended period" (April 2011); Warsh's five task forces (June 2026) |
+| minutes | 8 | the 2 percent goal adopted in January 2012; the June 2026 discussion of the statement |
+| unanswerable | 10 | outside the corpus, or asked `as_of` a date before the event |
+
+Three choices made while writing:
+
+- **How the references were found.** By reading the documents and by exact-substring lookup in
+  the passages, never with the retriever under evaluation. References found with BM25 or the
+  encoder would be easy for that same method to retrieve, which would inflate its recall.
+- **Questions the model cannot know.** 11 answerable questions are about documents released after Phi-4's training
+  cutoff, among them the 2026 change of Chair, the shorter statement and the five task forces.
+  On those, a right answer can only come from reading the retrieved passages.
+- **Point-in-time questions.** Two answerable questions and five unanswerable ones carry an
+  `as_of` date. On the unanswerable ones, the event exists in the corpus but after that date, so
+  a correct refusal requires the filter to work and the model to refuse rather than answer from
+  memory. U10 is an example: why the Chair said the FOMC raised rates by 75 basis points in June
+  2022, asked as of 1 June 2022.
+
+`qa_eval.validate` checks that every reference passage exists in the index and, for an `as_of`
+question, was released on or before that date. The split (seed 20261109, two development
+questions per type) is stored in `data/labels/fomc_qa_v1_split.json`: development C03, C05, L13,
+L17, M03, M04, P03, P06, U09 and U10, test the other 40.
+
 ---
 
 ## 7. Specification freeze
@@ -1922,3 +1952,5 @@ and the report.
 | 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
 | 2026-11-07 | B run: the score follows the text by the pre-set rule; hawkish > dovish FG on 100% of statements before and after the cutoff; the gap is +0.33 larger before (95% −0.07 to +0.68), +0.40 without flagged statements | memory would make known statements resist the edit; they move at least as much; H3 restated: no sign that period knowledge drives the score, borderline shading not excluded (§6.7) |
 | 2026-11-07 | Retrieval agent: in-repo index (paragraph units, BM25 + bge-small fused by RRF, point-in-time `as_of` filter), Phi-4 answers with verified verbatim citations; 50 questions written and committed before any run, 10 dev / 40 test | `kbase` needs Postgres and a second repository, so the pipeline would not rerun from this one; the corpus fits in memory; the dev/test split keeps the questions from being used to tune the system (§6.8) |
+| 2026-11-07 | Passage rules for the index (join wrapped lines, cut units over 250 words, drop units under 5 words): 26,354 passages | the parsed text's blocks were often wrapped lines or a moderator's turn, and some opening statements exceed what the encoder reads (§6.8) |
+| 2026-11-07 | Evaluation set v1: 50 questions (17 lookup, 7 change, 8 press conference, 8 minutes, 10 unanswerable), references found without the retriever, split fixed before any answer | references found with the retriever would inflate its recall; 11 questions are after Phi-4's cutoff, so only reading can answer them (§6.8) |
