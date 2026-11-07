@@ -1,0 +1,172 @@
+import numpy as np
+import pandas as pd
+import pytest
+
+from text_signals.sources.fomc.study import primary_sample, study_table
+
+
+def _events() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "doc_id": ["b", "a", "c"],
+            "release_date": ["2001-02-01", "2001-01-03", "2001-03-20"],
+            "d_UST2Y_30m_bp": [1.0, -2.0, 0.5],
+            "MP1_bp": [0.0, -10.0, None],
+            "lm_net_negative": [0.01, 0.02, 0.0],
+            "finbert_net_negative": [0.1, 0.2, 0.0],
+            "in_main_sample": [True, True, True],
+        }
+    )
+
+
+def _scores() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "doc_id": ["a", "b", "c"],
+            "release_date": ["2001-01-03", "2001-02-01", "2001-03-20"],
+            "llm_tone": [-0.5, 0.25, 1.0],
+        }
+    )
+
+
+def test_join_is_in_release_order_and_keeps_every_statement() -> None:
+    t = study_table(_events(), _scores())
+    assert list(t["doc_id"]) == ["a", "b", "c"]
+    assert list(t["llm_tone"]) == [-0.5, 0.25, 1.0]
+
+
+def test_join_refuses_a_date_mismatch_and_duplicate_scores() -> None:
+    bad = _scores().assign(release_date=["2001-01-04", "2001-02-01", "2001-03-20"])
+    with pytest.raises(ValueError, match="release dates differ"):
+        study_table(_events(), bad)
+    with pytest.raises(pd.errors.MergeError):
+        study_table(_events(), pd.concat([_scores(), _scores().iloc[:1]]))
+
+
+def test_primary_sample_drops_rows_missing_a_variable() -> None:
+    t = study_table(_events(), _scores())
+    assert list(primary_sample(t)["doc_id"]) == ["a", "b"]  # "c" has no MP1
+
+
+def test_primary_test_uses_the_frozen_specification() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import primary_test
+
+    rng = np.random.default_rng(0)
+    n = 120
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("2000-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = 2 * table["llm_tone"] + 0.3 * table["MP1_bp"] + rng.normal(0, 3, n)
+    r = primary_test(table)
+    assert list(r.coefficients) == [
+        "llm_tone",
+        "MP1_bp",
+        "lm_net_negative",
+        "finbert_net_negative",
+    ]
+    assert r.wald_df == 1 and r.hac_lags == 4 and r.n == n
+
+
+def test_robustness_runner_lists_influential_statements_by_date() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import describe_robustness, primary_robustness
+
+    rng = np.random.default_rng(1)
+    n = 80
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("2000-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = table["llm_tone"] + rng.normal(0, 1, n)
+    table.loc[5, "d_UST2Y_30m_bp"] = 40.0
+    r, infl = primary_robustness(table)
+    assert table.loc[5, "release_date"] in set(infl["release_date"])
+    assert "Huber" in describe_robustness(r, infl, 1.0)
+
+
+def test_secondary_tests_are_the_fourteen_listed_with_holm() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import secondary_tests
+
+    rng = np.random.default_rng(2)
+    n = 160
+    dates = pd.date_range("1996-01-01", periods=n, freq="60D").astype(str)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": dates,
+            "llm_tone": rng.normal(0, 1, n),
+            "d_llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "d_DGS3MO_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+            "unscheduled": [i % 10 == 0 for i in range(n)],
+            "zlb": [60 <= i < 110 for i in range(n)],
+        }
+    )
+    for col in ["d_UST2Y_30m_bp", "d_UST10Y_30m_bp", "d_slope_2s10s_30m_bp", "d_DGS2_bp"]:
+        table[col] = table["llm_tone"] + rng.normal(0, 1, n)
+    press = set(dates[100:])
+    sec = secondary_tests(table, press)
+    assert len(sec) == 14
+    assert sec.loc[sec["test"] == "Press conference days", "n"].item() == 60
+    assert (sec["p_holm"] >= sec["p"]).all()
+
+
+def test_out_of_sample_starts_in_2000_and_compares_nested_models() -> None:
+    import numpy as np
+
+    from text_signals.sources.fomc.study import out_of_sample
+
+    rng = np.random.default_rng(6)
+    n = 200
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("1994-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": rng.normal(0, 1, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = 2 * table["llm_tone"] + 0.3 * table["MP1_bp"] + rng.normal(0, 1, n)
+    summary, by_year = out_of_sample(table)
+    assert by_year.index.min() == 2000
+    assert summary["r2_full_vs_base"] > 0.3 and summary["clark_west_p"] < 0.01
+
+
+def test_previous_score_is_the_last_known_one() -> None:
+    from text_signals.sources.fomc.study import with_previous_score
+
+    t = pd.DataFrame(
+        {
+            "doc_id": ["a", "b", "c", "d"],
+            "release_date": ["2001-01-01", "2001-02-01", "2001-03-01", "2001-04-01"],
+            "llm_tone": [1.0, None, -1.0, 0.5],
+        }
+    )
+    prev = with_previous_score(t)["prev_llm_tone"].tolist()
+    assert np.isnan(prev[0]) and prev[1:] == [1.0, 1.0, -1.0]

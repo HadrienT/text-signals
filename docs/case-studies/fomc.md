@@ -605,7 +605,12 @@ Fixed before any regression was run (§7).
   Δy_i = α + β·score_i + γ·MP1_i + δ'·baselines_i + ε_i
 
 Δy_i is the 30-minute change in the 2-year yield (USMPD `UST2Y`, in bp). The baselines are the
-LM and encoder scores.
+LM and encoder scores: precisely, the two tone scores `lm_net_negative` and
+`finbert_net_negative`, which measure the same thing as the LLM score with the opposite sign
+(made precise on 2026-11-06, before the scores were joined to market data: §5.2 defines two LM
+scores, and `lm_uncertainty` measures uncertainty, not tone, so it is not a control of the
+primary test). The aggregate LLM score of the primary test is `llm_tone` from Phi-4
+(`data/processed/fomc/llm_scores_phi-4.csv`, §6.6).
 
 **Primary test (one, fixed in advance).** The test is H0: β_LLM = 0 against a two-sided
 alternative. It uses the 30-minute 2-year yield change, the aggregate LLM score, MP1 and the
@@ -642,6 +647,36 @@ Everything else below is secondary.
 - **Multiple testing:** the secondary tests (other outcomes, scores, subsamples, H2) are reported
   with Holm-adjusted p-values. A conclusion rests on the primary test only.
 
+**Power, computed 2026-11-05 before any score was joined to the outcome** (`text_signals/power.py`).
+The minimum detectable effect (MDE) is the smallest true effect, in bp of the 30-minute 2-year
+change per standard deviation of the score, that the primary test detects with 80% probability at
+a 5% two-sided size. It uses only the outcome, MP1 and the sample size:
+`MDE = (z₀.₉₇₅ + z₀.₈) · σ_e / sqrt(T · (1 − R²_x))`, where σ_e is the residual standard deviation
+after MP1 and R²_x the share of the score explained by the controls (unknown before scoring, so
+three values are shown). It is checked by simulation: the actual residuals resampled (fat tails
+kept), a synthetic score correlated with MP1, and the primary test itself (OLS, HAC with 4 lags),
+1,000 draws per point.
+
+- What was looked at: the distribution of the outcome on the main sample (247 statements:
+  mean −0.44 bp, standard deviation 5.72 bp, excess kurtosis 5.3, 28% of moves under 1 bp,
+  18 above 10 bp) and its regression on MP1 alone (slope 0.36, R² 0.19, residual standard
+  deviation 5.16 bp, residual excess kurtosis 1.9). No score.
+
+| Sample | T | σ_e (bp) | MDE, R²_x = 0 | R²_x = 0.25 | R²_x = 0.5 | False positives at β = 0 |
+|---|---|---|---|---|---|---|
+| Main | 247 | 5.16 | 0.92 | 1.06 | 1.30 | 6.0% |
+| Zero lower bound | 75 | 3.25 | 1.05 | 1.22 | 1.49 | 8.3% |
+| Outside the zero lower bound | 172 | 5.81 | 1.24 | 1.43 | 1.76 | 6.8% |
+
+The simulated MDE equals the formula's to within the 10% step of the grid. On the main sample,
+the power is 35% for a true effect of 0.5 bp per standard deviation, 85% for 1 bp and 100% for
+2 bp. Reading: an effect of about 1 bp per standard deviation of tone, about 3% of the residual
+variance, is detectable; one of half that size would be missed two times out of three. The HAC
+test rejects a little too often in these samples (6.0% instead of 5%, 8.3% on the 75 ZLB
+statements): a reason to report the HC3 and block-bootstrap p-values next to it, as planned.
+Limits: the synthetic score has no autocorrelation, while the real scores will (statements
+repeat their wording), which lowers the effective sample size and the power.
+
 **Secondary specifications.**
 
 - Each score alone, then together.
@@ -664,16 +699,230 @@ Everything else below is secondary.
     effective day in 2022 (17 March, the day after the announcement). On the day before the
     release, both conventions give the range that was known.
 
+**Primary test result (run once, 2026-11-06).** `python -m text_signals.sources.fomc.study
+primary`, on the specification above with no change: the 243 main-sample statements that have
+every variable (4 have no `llm_tone`: 22 March 1994, 18 April 1994, 18 March 2003, 9 May 2010),
+HAC with 4 lags.
+
+| Regressor | β | HAC se | t | p | SD | Effect per SD (bp) |
+|---|---|---|---|---|---|---|
+| `llm_tone` (Phi-4) | 1.381 | 0.484 | 2.85 | 0.004 | 0.744 | **+1.03** |
+| `MP1_bp` | 0.307 | 0.099 | 3.10 | 0.002 | 6.88 | +2.11 |
+| `lm_net_negative` | −34.0 | 31.8 | −1.07 | 0.284 | 0.0114 | −0.39 |
+| `finbert_net_negative` | −0.02 | 1.80 | −0.01 | 0.991 | 0.204 | −0.00 |
+
+R² 0.221. Wald (HAC) of β_LLM = 0: χ²(1) = 8.14, **p = 0.004**: H0 is rejected at 5%. The sign is
+the one H1 expects: a statement read one standard deviation more hawkish comes with a 2-year
+yield about 1 bp higher in the 30 minutes around its release, given the decision surprise and the
+two baseline scores, which add nothing once the LLM score is in. The effect is close to the
+minimum detectable effect computed before scoring (0.92 bp per SD, §6.3), so the test had about
+the power planned for an effect of this size, and its estimate is not precise: a 95% interval of
+β per SD is roughly 0.3 to 1.7 bp.
+
+What this does not yet show: the diagnostics, robustness checks and secondary tests listed
+above are run next and reported whatever they give; and the score's reading was evaluated
+against a reference reader, not ground truth (§6.6), so measurement error would bias β toward
+zero rather than create it.
+
+**Diagnostics of the primary test (2026-11-06).** `python -m text_signals.sources.fomc.study
+diagnostics`, on the same 243 statements and regressors. They document the data; the inference
+stays the one fixed in advance.
+
+| Check | Result | Reading |
+|---|---|---|
+| Collinearity | largest correlation −0.50 (`llm_tone`, `finbert_net_negative`); VIF 1.37, 1.10, 1.26, 1.63 | none flagged (threshold 5): the score's effect is estimated apart from the baselines |
+| Heteroskedasticity | Breusch–Pagan LM 60.1, p ≈ 3·10⁻¹²; White LM 101, p ≈ 3·10⁻¹⁵ | strong: the residual variance is not constant across statements. Newey–West standard errors are consistent under it, so the primary test's inference holds; OLS is not efficient, and a few high-variance statements may weigh heavily (influence checks next) |
+| Residual autocorrelation | Breusch–Godfrey (4 lags) LM 5.79, p = 0.22; Ljung–Box (4) Q 6.27, p = 0.18 | none detected |
+| Normality | Jarque–Bera 28.5, p ≈ 6·10⁻⁷; skew −0.06, kurtosis 4.67 | symmetric with fat tails (figure below); the tests are asymptotic, with T = 243, and the bootstrap and Huber checks address the tails |
+
+![QQ-plot of the primary test's residuals](figures/fomc_primary_qq.png)
+
+**Robustness of the primary test (2026-11-06).** `python -m text_signals.sources.fomc.study
+robustness`, same 243 statements and regressors; every check fixed in advance above.
+
+| Check | β | β per SD (bp) | se | p |
+|---|---|---|---|---|
+| OLS, HAC with 4 lags (primary) | 1.381 | 1.03 | 0.484 | 0.004 |
+| OLS, HC3 | 1.381 | 1.03 | 0.555 | 0.014 |
+| Moving-block pairs bootstrap (blocks of 4, 9,999 replications) | 1.381 | 1.03 | 0.481 | 95% interval [0.49, 2.38], per SD [0.36, 1.77] |
+| Refit without the 19 influential statements (Cook's distance > 4/T), HAC | 1.359 | 1.01 | – | 0.001 |
+| Huber robust regression | 0.979 | 0.73 | 0.427 | 0.022 |
+
+- **Every check keeps the effect positive and significant at 5%.** The bootstrap interval
+  excludes zero; HC3, which ignores autocorrelation and is more conservative in small samples,
+  gives p = 0.014.
+- **The influential statements do not carry the result.** 19 statements pass Cook's 4/T
+  threshold: mostly large decision surprises (4 February 1994, the intermeeting cuts of 15
+  October 1998, 3 January and 18 April 2001, 22 January 2008) and a few large text-only moves
+  (18 May 1999, 28 January 2004, 2022–2023). Without them β is unchanged (1.01 bp per SD) and
+  more precise (p = 0.001).
+- **Huber gives a smaller effect, 0.73 bp per SD.** Down-weighting the large residuals lowers β
+  by about a third: part of the OLS estimate comes from statements with large moves, which is
+  where the tone matters most if it matters. Still significant (p = 0.02); its standard error is
+  the model's own, not HAC.
+
+The estimate to report is the primary one, 1.03 bp per SD (bootstrap 95% interval 0.36 to 1.77),
+with Huber's 0.73 as the lower robust figure.
+
+**Secondary tests: the list and the Holm family (made precise 2026-11-06, before any of them
+was run).** Each is the primary regression with one change, and tests the coefficient named;
+HAC lags follow the same rule for each sample size. The 14 tests form one Holm family:
+
+1. LLM score alone (with MP1, without the baselines): `llm_tone`.
+2. LM score alone (with MP1): `lm_net_negative`.
+3. FinBERT score alone (with MP1): `finbert_net_negative`.
+4. H2: `d_llm_tone` (change from the previous statement's score, all statements in release
+   order) in place of `llm_tone`, other regressors unchanged.
+5. Outcome: 30-minute 10-year yield change (`d_UST10Y_30m_bp`).
+6. Outcome: 30-minute 2s10s slope change (`d_slope_2s10s_30m_bp`).
+7. Robustness outcome: daily ΔDGS2 (`d_DGS2_bp`).
+8. Robustness control: ΔDGS3MO (`d_DGS3MO_bp`) in place of MP1.
+9. Subsample: statements released from 1 May 1999 (233).
+10. Subsample: scheduled meetings only (232).
+11. Subsample: statements released on a press conference day.
+12. Subsample: statements not released on a press conference day.
+13. Subsample: zero lower bound (`zlb`, 75).
+14. Subsample: not at the zero lower bound.
+
+The "together" model of "each score alone, then together" is the primary test itself; the
+nested comparison (LLM over LM and FinBERT) is reported as the incremental R² of adding
+`llm_tone` to MP1 and the two baselines, whose HAC Wald test is the primary test.
+
+**Secondary test results (2026-11-06).** `python -m text_signals.sources.fomc.study secondary`.
+β per SD of the tested regressor, HAC Wald p and Holm-adjusted p over the 14:
+
+| # | Test | n | β per SD (bp) | p | Holm p |
+|---|---|---|---|---|---|
+| 1 | LLM score alone | 243 | +1.11 | 0.0001 | **0.001** |
+| 2 | LM score alone | 247 | −0.58 | 0.067 | 0.27 |
+| 3 | FinBERT score alone | 247 | −0.65 | 0.009 | 0.079 |
+| 4 | H2: change in LLM score | 242 | +0.85 | 0.010 | 0.079 |
+| 5 | Outcome: 10-year, 30 min | 243 | +0.96 | 0.039 | 0.21 |
+| 6 | Outcome: 2s10s slope, 30 min | 243 | −0.07 | 0.86 | 1.00 |
+| 7 | Outcome: daily ΔDGS2 | 243 | −0.07 | 0.91 | 1.00 |
+| 8 | Control: ΔDGS3MO in place of MP1 | 243 | +1.41 | 0.0007 | **0.009** |
+| 9 | From May 1999 | 231 | +1.13 | 0.001 | **0.011** |
+| 10 | Scheduled meetings only | 230 | +0.84 | 0.019 | 0.13 |
+| 11 | Press conference days | 96 | +0.48 | 0.20 | 0.59 |
+| 12 | Not press conference days | 147 | +1.70 | 0.004 | **0.039** |
+| 13 | Zero lower bound | 74 | +1.04 | 0.035 | 0.21 |
+| 14 | Not zero lower bound | 169 | +1.60 | 0.0009 | **0.010** |
+
+Nested comparison: R² of MP1 and the two baselines 0.198; with `llm_tone` 0.221 (+0.024).
+
+Reading, test by test, with the primary test as the only basis of the conclusion:
+
+- **Scores alone (1–3).** Alone, FinBERT also carries some signal (raw p = 0.009), which
+  disappears once the LLM score is in (primary test); LM is weak alone. The LLM score is the
+  only one that survives the correction.
+- **H2 (4).** The change in tone from the previous statement points the same way (+0.85 bp per
+  SD) but does not survive Holm (0.079): not established.
+- **10-year and slope (5, 6).** The 10-year moves about as much as the 2-year (+0.96 bp per SD,
+  not significant after Holm), so the slope does not move. The tone shifts the level of the
+  curve in the window rather than its slope.
+- **Daily ΔDGS2 (7): no effect at all.** At the close-to-close horizon the coefficient is zero
+  (−0.07 bp per SD, p = 0.91). Two readings, which this design cannot separate: the 30-minute
+  reaction is reversed or swamped later in the day (by the press conference from 2011, the
+  minutes or data releases, other news), or the daily change is too noisy to show a 1 bp effect
+  (R² 0.08 against 0.22). It limits what the result says: the tone moves yields **in the
+  window**; there is no evidence here that the move lasts to the close.
+- **Decision control (8).** With ΔDGS3MO in place of MP1 the effect is larger (+1.41 bp per SD):
+  ΔDGS3MO controls for the decision less sharply, and some of the decision surprise loads on the
+  tone. MP1 is the right control, and the primary estimate the lower of the two.
+- **Subsamples (9–14).** The effect holds from May 1999 and outside the zero lower bound; it is
+  smaller, and not significant after Holm, at the zero lower bound (+1.04, n = 74) and on
+  scheduled meetings only (+0.84). It is **much weaker on press conference days** (+0.48 bp per
+  SD, n = 96) than on other days (+1.70): when a press conference follows 30 minutes later, the
+  statement's tone moves the 2-year less inside its own window. A likely reason, not tested here,
+  is that markets wait for the Chair; since 2019 every meeting has a press conference, so this
+  bears on how the result applies today.
+
 ### 6.4 Out-of-sample test
 
 - Expanding window, refitted every year; the score's coefficient is estimated on past meetings
   only.
 - Out-of-sample R² against a zero forecast and against the baselines.
 
+**Details (made precise 2026-11-06, before the test was run).**
+
+- **Models.** *Full*: the primary regression (`llm_tone`, MP1, `lm_net_negative`,
+  `finbert_net_negative`). *Baseline*: the same without `llm_tone`. *Zero*: a forecast of 0 bp.
+  Every regressor is known at the release (MP1 is measured in the same window), so this is an
+  out-of-sample test of the **coefficients**: does a relation estimated on past statements only
+  fit the next ones?
+- **Window.** Primary sample (243 statements). The first forecast year is 2000, fitted on
+  1994–1999; then every 1 January the models are refitted on all earlier statements and predict
+  that year's statements. Coefficients never see the year they predict.
+- **Measures.** R²_OOS = 1 − Σ(y − ŷ_full)² / Σ(y − ŷ_bench)², against the zero forecast and
+  against the baseline model. The full model nests the baseline, so the comparison uses the
+  Clark–West (2007) adjusted MSPE test, one-sided (the full model is better), its standard error
+  HAC with the same lag rule. Reported, not part of the Holm family; the conclusion stays with the
+  primary test.
+
+**Out-of-sample result (2026-11-06).** `python -m text_signals.sources.fomc.study oos`: 225
+statements predicted, 2000 to 2026.
+
+| Comparison | R²_OOS |
+|---|---|
+| Full model vs zero forecast | +5.8% |
+| Baseline (MP1, LM, FinBERT) vs zero forecast | +3.8% |
+| **Full vs baseline (adding `llm_tone`)** | **+2.1%**; Clark–West t = 2.73, one-sided p = 0.003 |
+
+![Cumulative out-of-sample gain of adding the LLM score](figures/fomc_oos_cumulative_gain.png)
+
+- **Over the whole period, a relation estimated on past statements only still helps.** Adding
+  the LLM score lowers the out-of-sample squared error by 2.1% against the baseline, and the
+  Clark–West test rejects equal accuracy.
+- **The gain is not steady.** The cumulative gain rises from 2000 to 2008 (largest in 2003 and
+  2008) and again in 2022, and falls in most other years: from 2009 to 2021, and from 2023, the
+  full model forecasts slightly worse than the baseline. Most of these years have a press
+  conference after the statement (every meeting since 2019), where the secondary tests also
+  found a much weaker effect; the zero lower bound years are in the same stretch. On recent
+  years alone the LLM score would not have helped a forecaster.
+
 ### 6.5 Placebos
 
 - Shuffled event dates: the score should explain nothing.
 - Score of the previous meeting instead of the current one.
+
+**Details (made precise 2026-11-06, before either placebo was run).** Primary sample and
+regressors throughout.
+
+- **Shuffled dates (permutation test).** `llm_tone` is randomly permuted across the 243
+  statements while the outcome, MP1 and the baselines stay with their own statement; the primary
+  regression is refitted each time. 9,999 permutations, seed 20261106. The statistic is the HAC
+  t of β_LLM; the permutation p-value is the share of permutations with |t| at least the observed
+  one (counting the observed one). A score that only works with its own statement should leave
+  the shuffled t-statistics centred on zero.
+- **Previous statement's score.** `llm_tone` of the previous statement in release order (all
+  statements) replaces the current one. It was public before the release, so it should not
+  explain the 30-minute move. Because tone is persistent, the previous score is correlated with
+  the current one and can pick up its effect when the current one is left out; so the placebo is
+  run twice: (a) as listed, in place of the current score; (b) next to the current score, where
+  its coefficient should be near zero. The autocorrelation of `llm_tone` is reported with them.
+
+**Placebo results (2026-11-06).** `python -m text_signals.sources.fomc.study placebos`.
+
+| Placebo | Result | Expected | Met |
+|---|---|---|---|
+| Score shuffled across statements (9,999 permutations) | shuffled HAC t: mean −0.00, SD 1.03; observed t 2.85; permutation p = **0.005** | shuffled t centred on 0, observed t in the tail | yes |
+| (a) Previous statement's score in place of the current one | +0.26 bp per SD, p = 0.40 (n = 246) | no effect | yes |
+| (b) Previous score next to the current one | previous **−1.04** bp per SD, p = 0.034; current **+1.89** bp per SD, p = 0.001 | previous near 0 | **no** |
+
+`llm_tone` is persistent: its first-order autocorrelation over all statements is 0.77.
+
+- **The score works only with its own statement.** Attached to a random statement it explains
+  nothing (shuffled t-statistics are centred on zero with unit spread), and the observed
+  t-statistic is beyond 99.5% of them, which agrees with the HAC p-value without relying on its
+  asymptotics.
+- **The previous score alone explains nothing**, as a public, already-known score should not.
+- **Next to the current score, the previous one is negative, not zero.** This is not what the
+  placebo expected. The two coefficients have opposite signs, the current one larger: the 2-year
+  moves with the new tone *net of the tone already known*, as it would with a surprise measured
+  against expectations. That reading is formed after seeing the result and is not tested here;
+  it points the same way as H2 (the change in tone, +0.85 bp per SD, not significant after
+  Holm). The primary estimate stays the pre-registered one; the placebo shows that the level of
+  the score partly stands for its change.
 
 ### 6.6 Evaluation of the extraction
 
@@ -1035,6 +1284,393 @@ outside the sample, with the reference reading them blind as before.
 - **Recognition probe.** Ask the model to date an anonymised statement. High accuracy means the
   model recognises documents rather than reading them.
 
+**Details (made precise 2026-11-06, before any of the three was run).** Model: Phi-4, stated
+training cutoff June 2024 (taken as 30 June 2024, §5.2).
+
+- **Cutoff split.** The primary regression with `llm_tone × after_cutoff` and `after_cutoff`
+  added; the test is the interaction (H0: same β before and after), HAC. β before and after are
+  reported with their intervals, and the out-of-sample squared-error gain of §6.4 is summed over
+  the statements after the cutoff. **Power is low by construction**: 19 primary-sample
+  statements fall after the cutoff (31 July 2024 to 28 October 2026); with a residual SD near
+  5 bp, only a difference of roughly 3 bp per SD or more could be detected. A null here does not
+  show that look-ahead is absent; the two tests below do not depend on the cutoff.
+- **Anonymisation.** Each statement text is rewritten by `anonymise` (`sources/fomc/
+  lookahead.py`): dates with a month name (with or without day and year) become `[date]`, a
+  month name alone `[month]`, four-digit years `[year]`, and the names of FOMC members, taken
+  from the statements' own vote paragraphs and "Chairman …" phrases, `[member]`, both full name
+  and surname. Nothing else changes: the policy wording, numbers and rates stay. Phi-4 reads the
+  anonymised texts with the chosen procedure (prompt v2, values from the first answer); compared
+  with the original scores: correlation, mean change, share of statements whose `llm_tone`
+  changes, and β of the primary regression on the anonymised score. If the model's reading drew
+  on recognising the date, removing it should move the scores and β.
+- **Recognition probe.** Phi-4 is shown an anonymised statement and asked, in a separate
+  versioned prompt (`fomc-date-probe-v1`), for the year it was most likely released, as JSON
+  `{"year": int}`, temperature 0. Measured on all statements: mean absolute error in years, share
+  within one year, against a naive guess (the median year of the sample) and against the model's
+  guess on the statements after its cutoff. Low error means the model can place a text in time,
+  so it could also bring knowledge of what followed; it does not by itself show that it did.
+
+**Look-ahead results (2026-11-06).** `python -m text_signals.sources.fomc.lookahead report`,
+after Phi-4 read the 250 anonymised statements (0 invalid) and answered the dating probe on all
+250 (0 invalid).
+
+*Cutoff split* (primary sample):
+
+| | n | β per SD (bp) | se per SD |
+|---|---|---|---|
+| Before 30 June 2024 | 224 | +1.13 | 0.37 |
+| After | 19 | −0.44 | 1.38 |
+| Interaction in the pooled regression | 243 | +0.48 | p = 0.66 |
+
+Out of sample, the LLM score loses against the baseline over the 19 statements after the cutoff
+(squared-error gain −27.7 bp²).
+
+*Anonymisation* (dates, years and member names removed; a median of 12 replacements per
+statement, from 0 to 19): the anonymised and original `llm_tone` correlate at 0.96, with no mean shift
+(+0.001); the score changes on 21% of statements. In the primary regression on the same 242
+statements, β is 0.85 bp per SD (p = 0.010) with the anonymised score against 0.97 (p = 0.006)
+with the original.
+
+*Dating probe* (year asked for each anonymised statement):
+
+| | Mean absolute error (years) | Within one year |
+|---|---|---|
+| Phi-4, all 250 | 2.62 | 81% (exact year 59%) |
+| Naive guess (median year) | 7.48 | 10% |
+| Phi-4, statements before the cutoff | 1.21 | – |
+| Phi-4, the 20 statements after the cutoff | 18.85 | – |
+
+By period before the cutoff, the error is 0.4 years from 2005 to 2019. After the cutoff the
+model answers 1994, 2006 or 2023: it never places a 2024–2026 statement after 2023.
+
+Reading:
+
+- **Phi-4 can place the statements it could have seen in time, precisely**, from the text alone
+  without dates or names. The statements after its cutoff it cannot place, and it puts them in
+  earlier years whose rate levels look alike (a 4 percent target in 2025 reads as 2006 or 1994).
+  So the model brings knowledge of the period: the condition for look-ahead is met. The probe
+  does not show that this knowledge entered the scores.
+- **Removing explicit dates and names barely changes the reading.** The scores move little and
+  β falls by about an eighth. But the anonymisation leaves the rate levels and the wording, which
+  are what the model dates from, so it cannot remove that knowledge without removing the policy
+  content itself.
+- **After the cutoff the effect is not detectable**: β per SD is −0.44 with a standard error of
+  1.38, the interaction test has no power (stated in advance), and the out-of-sample gain is
+  negative. This is what look-ahead would predict, and also what the decline since 2009 (§6.4,
+  press conferences) predicts without it; 19 statements cannot separate the two.
+- **H3 is not settled.** The evidence is that the reading does not lean on explicit dates, that
+  the model knows the period of every statement it scored before its cutoff, and that on the
+  only statements it could not have seen the effect does not show. The primary result is
+  therefore a result for a model with knowledge of the period, on a sample almost entirely
+  inside its training window. A model with an earlier cutoff, or a longer stretch of statements
+  after this one, is what would separate reading from remembering.
+
+**Look-ahead-free reader: ChronoGPT (specified 2026-11-06, 23:40, before any statement was
+scored).** He, Lv, Manela and Wu (2025) publish one model per vintage τ = 31 December 1999, …,
+2024, each trained only on text dated before τ (`manelalab/chrono-gpt-instruct-v1-<τ>`, MIT,
+≈ 1.55 B parameters, context 1,792 tokens). A statement released in year Y is read by the vintage
+of Y − 1 (statements of 2025 and 2026 by the 2024 vintage), so no statement is read by a model
+that has seen what followed it. Statements before 2000 have no such model and are left out.
+
+- **What was tried first, and failed.** Asked directly (in the models' own instruction format)
+  whether a sentence points to higher or lower rates, or is hawkish or dovish, the 1999 and 2024
+  vintages give the same answer to an invented rate hike and an invented rate cut ("Lower";
+  "neutral"; "Raising"). As an instruction follower, ChronoGPT cannot do this task.
+- **Score used: likelihood of the next word.** For each sentence of a statement (the FinBERT
+  splitter), the model reads "<sentence> As a result, short-term interest rates are likely to"
+  and the score is log P(" rise") − log P(" fall") at the next token. On invented sentences the
+  ordering is mostly right (hike above cut, hawkish guidance above dovish guidance) but the
+  signal is weak and every vintage has its own offset. The offset is removed with five fixed
+  content-free anchor sentences (procedural wording, the same for every vintage): a sentence's
+  score is its log-odds minus the vintage's mean on the anchors; a statement's `chrono_tone` is
+  the mean over its sentences (hawkish positive). CPU, float32 (`text_signals/chrono_gpt.py`, the
+  authors' forward pass copied, weights loaded with `weights_only`); the repository revision and
+  the weights' sha256 of every vintage are recorded.
+- **Validity criterion, fixed now.** The reader is judged on the statements of the evaluation
+  and confirmation samples released from 2000: if the correlation between `chrono_tone` and the
+  Claude reference's tone score is below 0.30, the reader is declared too weak to read the
+  statements, and its regression is reported but not interpreted. The correlation with Phi-4's
+  `llm_tone` over all scored statements is reported with it.
+- **Regression.** The primary regression with `chrono_tone` in place of `llm_tone`, on the
+  statements from 2000; Phi-4's β on the same statements alongside, and both scores together.
+  If the reader is valid and its β is positive and significant, look-ahead does not explain the
+  primary result; if the reader is valid and β is null, that is evidence that it may. Not part
+  of the Holm family.
+
+**ChronoGPT results (2026-11-07).** `python -m text_signals.sources.fomc.chrono_scores` ran
+overnight on CPU: all 26 vintages (1999 to 2024), 230 statements released from 2000, none
+failed, between 2.5 and 6.5 minutes per vintage. Each record keeps the repository, revision,
+weights sha256, prompt and splitter versions and the vintage's anchor offset. Then
+`python -m text_signals.sources.fomc.lookahead chrono`:
+
+| | Value |
+|---|---|
+| Correlation of `chrono_tone` with the reference tone (n = 83) | **0.04** (bar 0.30): **not valid** |
+| Correlation with Phi-4's `llm_tone`, all scored statements | −0.00 |
+| β of `chrono_tone`, primary regression from 2000 (n = 225) | +0.28 bp per SD, p = 0.45 |
+| β of Phi-4's `llm_tone`, same statements | +1.01 bp per SD, p = 0.003 |
+| Both together | ChronoGPT +0.23 (p = 0.51); Phi-4 +0.99 (p = 0.002) |
+
+By the criterion fixed before scoring, the reader is too weak to read the statements. Its
+regression is reported above and not interpreted. The Phi-4 line gives a side result: on the
+statements from 2000, Phi-4's β is the same as on the full primary sample.
+
+*Why it fails (post hoc, looked at after the verdict; it changes nothing in the specification).*
+`lookahead chrono-diagnostics`:
+
+- The most dovish statements by the reference get hawkish ChronoGPT scores: 28 January 2009
+  (reference −1.8) scores +0.31 and 29 April 2020 (−1.6) scores +0.51, close to the
+  2 February 2000 rate hike (+2.0), which scores +0.32.
+- **No reading within a vintage.** With both scores demeaned by vintage, the correlation is
+  −0.09.
+- **The raw log-odds, before the anchor offset, correlate at 0.34 with the reference.** This
+  would pass the bar, but the correlation comes from differences in level between vintages,
+  that is from the era and not from the statement, so it is not a reading. It was seen after
+  the verdict and is not adopted.
+- **Part of the score is statement length**: correlation 0.43 with the number of sentences.
+
+Reading: a 1.5 B parameter model scored by next-word likelihood does not read the tone of an
+FOMC statement, so ChronoGPT gives no evidence for or against look-ahead. **H3 stays open**, as
+stated above. What would close it is still a family of dated models able to do the task, or a
+longer run of statements after Phi-4's cutoff.
+
+**Where H3 stands, and two further tests (specified 2026-11-07, before either was run).**
+
+*The reasoning so far.* Four facts, and what each one does and does not show:
+
+1. Anonymisation barely moves the scores (r = 0.96). This shows that the reading does not lean
+   on *explicit* dates and names. It does not show that the model reads rather than remembers:
+   the dating probe shows that it places an anonymised statement within about a year from the
+   wording and the rate levels alone, which anonymisation leaves in place.
+2. The model therefore knows the period of almost every statement it scored. That is the
+   *condition* for look-ahead. Look-ahead in the score also needs a second step: that the model
+   knows how the market took the statement and lets this shade its reading of the tone. Nothing
+   so far tests that second step.
+3. After the cutoff the effect is not detectable: β = −0.44 bp per SD, se 1.38, n = 19. The
+   95% interval (about −3.1 to +2.3) holds zero and also the +1.13 measured before the cutoff.
+   The data do not say that the effect disappears. They say nothing either way.
+4. A second explanation predicts the same weak effect after the cutoff without any look-ahead.
+   The effect is already much weaker on press conference days (secondary test 11: +0.48 bp per
+   SD, n = 96, against +1.70 on other days), and the out-of-sample gain is made in 2000–2008
+   and lost in most later years (§6.4). That decline starts around 2011, inside the training
+   window, so look-ahead cannot cause it. Every statement after the cutoff falls on a press
+   conference day.
+
+So two questions remain open, and each gets one test. **A** asks whether the weak effect after
+the cutoff is explained by the press conference regime. **B** asks the second step of point 2
+directly: when the text says one thing and the model may remember another, does the score
+follow the text?
+
+*A. Regime-matched cutoff comparison.* Compare before and after the cutoff inside the same
+regime, so that the press conference cannot account for a difference.
+
+- A1 (main): statements of the primary sample released on a press conference day (the
+  definition of secondary test 11). Before the cutoff: n = 77, 27 April 2011 to 12 June 2024.
+  After: n = 19.
+- A2: the calendar window in which every meeting has a press conference, 1 January 2019 to
+  30 June 2024 (n = 47), against the same 19.
+- In each: the primary regression on each side, β per SD of `llm_tone` (the SD of the pooled
+  sample, as in the cutoff split) with its HAC 95% interval, and the interaction
+  `llm_tone × after_cutoff` in the pooled regression.
+- Power, computed before the run from the outcome and MP1 only (residual SD after MP1, the
+  formula of §6.3, 5% size, 80% power): MDE 1.47 bp per SD for A1 before the cutoff, 2.03 for
+  A2 before, 2.51 after. **Neither side can detect an effect of the primary size (1.03) with
+  confidence**, and the interaction has even less power. A is read from the point estimates
+  before the cutoff, with that caveat.
+- Reading rule, fixed now, on the A1 estimate before the cutoff:
+  - below 0.5 bp per SD (half the primary β): the regime accounts for the weak effect after the
+    cutoff, and that weakness is no evidence of look-ahead;
+  - 0.9 or more with HAC p < 0.05: the regime does not explain it, and look-ahead stays the
+    simplest explanation of the weakness after the cutoff;
+  - in between: inconclusive. A2 is reported with A1 and read the same way, as a check.
+- **What is already known, stated before the run.** Secondary test 11 (+0.48 on all 96 press
+  conference days, the 19 after the cutoff included) and the yearly out-of-sample path were
+  seen on 2026-11-06. So A is not blind: our expectation, written now, is an A1 estimate before
+  the cutoff around +0.5 to +0.7, which sits on the lower threshold. The thresholds are not
+  moved to avoid this; if the estimate falls in the inconclusive band, it is reported as such.
+
+*B. Counterfactual edits: does the score follow the text?* Take real statements, rewrite only
+the forward guidance sentence in a hawkish, a dovish and a neutral version, and have Phi-4 read
+each with the chosen procedure. If the model reads, its forward guidance value follows the
+edit. If it reproduces what it remembers of the statement, the value stays close to the
+original reading whatever the edit says.
+
+- *Sample* (seed 20261108, no market data used): 10 statements drawn from 2000–2018 and 10 from
+  1 January 2019 to 30 June 2024, among those where Phi-4's original reading has a forward
+  guidance value; and all 18 statements after the cutoff that have one. The statements before
+  the cutoff are the ones the model may recognise; those after it are the control the model
+  cannot recognise.
+- *Edits* (`data/labels/fomc_counterfactual_v1.json`). The guidance sentence is the sentence of
+  the statement that contains Phi-4's forward guidance evidence. It is rewritten three times:
+  - **hawkish**: a clear signal of further tightening (the schema's +2);
+  - **dovish**: a commitment to keep rates low or to ease (−2);
+  - **neutral**: the same meaning in other words.
+
+  Only that sentence changes. The decision, the rate levels and every other sentence stay as
+  they are, and a sentence that also states the decision keeps its decision clause. No dates or
+  names are added, and the length stays close to the original. The edits are written by Claude
+  (claude-opus-5-5) on 2026-11-07, before Phi-4 reads any edited text. The file stores the
+  original sentence verbatim; code checks that it occurs exactly once in the statement.
+- *Reading*: Phi-4 (Q8_0, the profile used for every score), prompt v2, values from the first
+  answer, temperature 0, cached apart from the other readings. The original reading is the one
+  already cached.
+- *Measures*, for the forward guidance value FG:
+  - B1, follows the text: the share of statements with FG(hawkish) > FG(dovish);
+  - B2, reaches the target: the shares with FG(hawkish) ≥ +1 and with FG(dovish) ≤ −1;
+  - B3, noise: the share with FG(neutral) ≠ FG(original), and the mean absolute change of the
+    four other stance fields between each edit and the original (spill-over);
+  - B4, memory: the mean of FG(hawkish) − FG(dovish) before the cutoff against after, with a
+    bootstrap 95% interval of the difference (10,000 resamples of statements, seed 20261108).
+    It is also split before the cutoff by whether the dating probe placed the statement within
+    one year;
+  - `llm_tone`(hawkish) − `llm_tone`(dovish), reported with each.
+- *Reading rule*, fixed now:
+  - **the score follows the text**: B1 ≥ 80% before the cutoff, and the B4 difference does not
+    exclude zero, or favours the statements before the cutoff;
+  - **memory overrides the text**: B1 < 50% before the cutoff, or a mean FG(hawkish) −
+    FG(dovish) before the cutoff below half the mean after, with the interval of the difference
+    excluding zero;
+  - otherwise: partial, reported as such.
+- *What B cannot show.* It tests whether the score can be pulled away from what the model may
+  remember, when the text clearly says something else. On the real statements, text and memory
+  agree, and B cannot rule out that memory shaded the borderline cases. A passing B makes
+  the "the model only remembers" reading untenable. It does not prove that memory contributed
+  nothing.
+
+*B, details added while writing the edits (2026-11-07, before Phi-4 read any edited text).*
+Three cases the specification had not foreseen, and one bias found on reading the texts:
+
+- **Which passage is rewritten.** Phi-4's evidence is not always one verbatim sentence: in 2004-06-30 it
+  joins two sentences that are not adjacent, and in 2006-05-10 and 2020-03-23 it is not verbatim
+  (it drops words). The passage is found by three rules, in order (`guidance_text`): the one
+  sentence that contains the span; else the shortest block of consecutive sentences that
+  contains it; else the one sentence that shares the most words with it. Every one of the 38
+  statements gets a passage; four go through the second or third rule.
+- **Identical passages get identical rewrites.** 13 of the 18 statements after the cutoff share
+  the "In considering (the extent and timing of) additional adjustments…" sentence, and three
+  pairs before the cutoff share a sentence (2020-03-15 and 2020-04-29; 2021-03-17 and
+  2021-11-03; 2024-05-01 and 2024-07-31). The same edit is used each time, so that differences
+  come from the rest of the text and not from the wording of the edit. The last pair, one
+  statement on each side of the cutoff with the same guidance sentence, is the closest
+  comparison B has.
+- **Other rate guidance left in the text.** The edit changes one passage. When another sentence
+  of the statement also speaks of the future path of the policy rate, it stays and pulls the
+  reading back towards the original, just as memory would. Reading the 38 texts, this is the
+  case for **9 of the 20 statements before the cutoff and 1 of the 18 after** (older and
+  2019–2022 statements carry several guidance sentences; for example 2004-06-30 keeps "policy
+  accommodation can be removed at a pace that is likely to be measured"). Left alone, this
+  asymmetry would bias B towards the conclusion that memory overrides the text. Each such
+  statement is flagged in the edits file (`other_rate_guidance`, with the sentence). B is
+  reported on all 38, and again **without the flagged statements (11 before, 17 after)**. The
+  reading rule is applied to both, and the result without them is the one that answers the
+  question, since only there does the edit change all the guidance the text gives.
+- The edits are built by `sources/fomc/counterfactual_edits.py`, which holds the rewrites and the
+  flags. Of Phi-4's original readings, only the forward guidance evidence was used, to find the
+  passage. No value of an edited reading had been produced when the file was committed.
+
+**Result of A (2026-11-07).** `python -m text_signals.sources.fomc.lookahead regime`:
+
+| | n | β per SD (bp) | HAC 95% interval | p |
+|---|---|---|---|---|
+| A1, press conference days, before the cutoff | 77 | +0.56 | −0.17 to +1.29 | 0.13 |
+| A1, after the cutoff | 19 | −0.40 | −2.89 to +2.09 | 0.75 |
+| A1, interaction | 96 | +1.16 | | 0.40 |
+| A2, from 2019, before the cutoff | 47 | +0.84 | +0.04 to +1.65 | 0.040 |
+| A2, after the cutoff | 19 | −0.43 | −3.10 to +2.24 | 0.75 |
+| A2, interaction | 66 | +0.54 | | 0.72 |
+
+By the rule fixed in advance, **A is inconclusive**. The A1 estimate before the cutoff (+0.56)
+falls in the band between 0.5 and 0.9, where we expected it to (+0.5 to +0.7). A2 (+0.84,
+p = 0.040) also falls just under 0.9.
+
+What A does show:
+
+- Inside the press conference regime, and before the cutoff, the effect is about half the
+  primary β (+0.56 against +1.03). The regime explains part of the decline, so the comparison
+  of 19 statements after the cutoff with the whole sample before it overstated the gap that
+  could be put down to look-ahead.
+- It does not explain all of it: the regime-matched estimate before the cutoff stays positive,
+  and in A2 it is even significant at 5%.
+- The gap between before and after inside the regime (about 1 bp per SD) is smaller than the
+  noise of the 19 statements after the cutoff (se 1.3). The interaction tests are far from
+  significant, as their power predicted.
+
+So the weakness after the cutoff can be neither put down to the regime nor taken as evidence
+of look-ahead. This is what the MDE said in advance (1.47 and 2.51 bp per SD against an effect
+of 0.5 to 1). The question is moved to B, which does not depend on the number of statements
+after the cutoff.
+
+**Result of B (2026-11-07).** Phi-4 (`/opt/llm/models/phi-4-Q8_0.gguf`, the same weights as
+the original readings) read the 114 edited texts, with 0 invalid answers, in 16 minutes. The
+server was switched to the `research` profile for the run and back to `code` afterwards. Then
+`python -m text_signals.sources.fomc.counterfactual report`. Forward guidance value (FG,
+−2 to +2):
+
+| | n | FG original | FG hawkish | FG dovish | B1: hawkish > dovish | B2: hawkish ≥ +1 / dovish ≤ −1 | B3: neutral changed | `llm_tone` gap |
+|---|---|---|---|---|---|---|---|---|
+| Before the cutoff, all | 20 | −0.05 | +1.15 | −1.40 | **100%** | 100% / 85% | 20% | +0.94 |
+| After the cutoff, all | 18 | +0.11 | +1.00 | −1.22 | **100%** | 100% / 100% | 11% | +0.44 |
+| Before, without other rate guidance | 11 | −0.09 | +1.09 | −1.55 | **100%** | 100% / 91% | 9% | +1.27 |
+| After, without other rate guidance | 17 | +0.06 | +1.00 | −1.24 | **100%** | 100% / 100% | 12% | +0.44 |
+
+B4, the mean FG(hawkish) − FG(dovish) before the cutoff minus after: **+0.33** (bootstrap
+95% interval −0.07 to +0.68) on all statements, and +0.40 (−0.05 to +0.79) without the flagged
+ones. The edits move the statements the model may remember *at least as much* as those it
+cannot have seen. The dating probe placed 18 of the 20 statements before the cutoff within one
+year. Those 18 move like the rest (FG gap 2.56).
+
+**By the rule fixed in advance, the score follows the text**, on all statements and without
+the flagged ones: B1 is 100% before the cutoff (bar 80%), and B4 favours the statements before
+the cutoff, with an interval that holds zero. Neither condition for "memory overrides the
+text" is met.
+
+Looked at after the verdict (descriptive, not part of the rule):
+
+- **The closest comparison.** 2024-05-01 (before the cutoff) and 2024-07-31 (after) have the
+  same guidance sentence and got the same edits. Phi-4's FG is identical on both: original +1,
+  hawkish +1, dovish −1, neutral +1.
+- **Where the edit falls short.** The dovish version stays at FG +1 in three statements:
+  2004-06-30, 2006-05-10 and 2022-11-02. All three announce a rate increase. Two of them are
+  flagged: 2004-06-30 keeps "accommodation can be removed at a pace that is likely to be
+  measured", and 2022-11-02 keeps "the pace of future increases". So the text left in place,
+  the decision or memory can each account for these cases; B cannot tell which. Even there,
+  FG(hawkish) is above FG(dovish).
+- **Ceiling.** Phi-4 almost never gives +2 to the hawkish rewrites (3 of 38), only +1. The
+  scale is used asymmetrically, the same way before and after the cutoff.
+- **The larger tone gap before the cutoff** (+0.94 against +0.44) comes mostly from the number
+  of stance fields filled: 3.8 on average before against 4.8 after, so FG weighs more in the
+  mean. The other fields also move a little in the edit's direction before the cutoff (summed
+  over the four, +0.15 for hawkish and +0.10 for dovish, against −0.06 after). Memory would pull
+  them the other way.
+- **Neutral rewrites.** 4 of 20 before and 2 of 18 after change FG. One of them is probably a
+  fault of the rewrite rather than noise in the reading: for 2021-12-15, "With inflation having
+  exceeded 2 percent" became "Because inflation has been above 2 percent", which makes the
+  sentence more hawkish, and FG moves from −1 to +1. On 2026-07-29 the neutral rewrite ("The
+  Committee is committed to delivering price stability") gets no FG at all. That original's
+  FG of +1 on "The Committee will deliver price stability" was itself a loose reading.
+
+**What H3 now rests on.**
+
+| Test | What it asks | Result |
+|---|---|---|
+| Cutoff split | weaker after the cutoff? | not detectable (n = 19; no power) |
+| A, inside the regime | does the press conference regime explain the weakness? | inconclusive: halves the effect, does not remove it |
+| Anonymisation | does the reading lean on dates and names? | no (r = 0.96, β 0.85 vs 0.97) |
+| Dating probe | does the model know the period? | yes, within about a year before the cutoff |
+| ChronoGPT | a reader without look-ahead | too weak to read the statements |
+| B, counterfactual edits | does the score follow the text against memory? | yes, as much before the cutoff as after |
+
+The look-ahead argument needs two steps: the model knows the period (the probe shows it does),
+and that knowledge shades the score. B tests the second step on the score's main channel and
+finds no sign of it. When the forward guidance sentence of a statement the model knows is
+rewritten, the score follows the rewrite every time, by as much as on statements it cannot
+have seen. The reading of the primary result changes accordingly. **The LLM score is a reading
+of the text by a model that knows the period, and B finds no sign that this knowledge drives
+the score.** H3 is not closed. B cannot exclude memory shading borderline readings where text
+and memory agree (stated before the run), and the weaker effect after the cutoff is
+unexplained but too noisy to interpret. A longer run of statements after the cutoff is still
+what would settle that.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1121,6 +1757,11 @@ and the report.
   Market Effects of FOMC Communication: Evidence from a New Event-Study Database. *Federal
   Reserve Bank of San Francisco Working Paper* 2025-30, doi:10.24148/wp2025-30. Database:
   `https://sffed.us/usmpd`.
+- He, S., Lv, L., Manela, A. and Wu, J. (2025). Chronologically Consistent Large Language
+  Models. arXiv:2502.21206. Models `manelalab/chrono-gpt-instruct-v1-<vintage>` on Hugging Face.
+- Clark, T. E. and West, K. D. (2007). Approximately Normal Tests for Equal Predictive
+  Accuracy in Nested Models. *Journal of Econometrics* 138(1), 291–311,
+  doi:10.1016/j.jeconom.2006.05.023.
 - Gürkaynak, R., Sack, B. and Swanson, E. (2005). Do Actions Speak Louder Than Words? The
   Response of Asset Prices to Monetary Policy Actions and Statements. *International Journal of
   Central Banking* 1(1), 55–93. MP2, target and path factors.
@@ -1171,6 +1812,7 @@ and the report.
 | 2026-11-05 | Minutes and press conference transcripts fetched and parsed; release dates checked against four sources | week 1 scope; a one-day error in an event date would void an event study |
 | 2026-11-05 | Minutes release dates of 28 Oct 2003 and 21 Sep 2004 corrected from the calendar; four USMPD minutes dates flagged as wrong | page stamps, the Fed's press release index and Internet Archive captures contradict them (§3.5) |
 | 2026-11-05 | A press conference is released on the day it is held, read from its page's URL, not from the meeting date | it is live; the 2 March 2020 call had its press conference on 3 March |
+| 2026-11-05 | Power computed before scoring: MDE 0.92 bp per score SD on the main sample (1.05 on the ZLB subsample) | sets what a null result can rule out; uses the outcome and MP1 only, no score |
 | 2026-11-06 | Extraction schema v1: seven fields on a common hawkish-positive scale, verbatim evidence per field, the decision kept as a quality check only | auditable field by field against hand labels; MP1 already controls for the decision |
 | 2026-11-06 | Primary LLM score: equal-weight mean of the five stance fields; secondary: forward guidance alone; H2: difference from the previous score | no weight to choose, so nothing fitted; guidance alone shows the channel; a difference avoids asking the model to compare two texts |
 | 2026-11-06 | Learned field weights (ML) deferred, not specified | 247 events, chronological dependence and regime changes make it a secondary, out-of-sample question (§6.4) |
@@ -1189,3 +1831,21 @@ and the report.
 | 2026-11-06 | Confirmation run: procedure confirmed by the pre-set criterion (forward guidance κ 0.70 against a bound of 0.71, reported) | the repair loop drops some values when told a span is wrong, and once turned a valid answer invalid; forward guidance is weaker out of sample (§6.6) |
 | 2026-11-06 | Revised after the confirmation: scores use the first answer; the repair loop only audits the evidence | the repair changed values and once broke a valid answer without reading better; the regression uses the values (§6.6) |
 | 2026-11-06 | All 250 statements scored by Phi-4; a first answer that fails validation takes the repaired answer's values, flagged | nothing to protect when the first answer has no values; 2 cases, 1 statement without a score; no market data seen (§6.6) |
+| 2026-11-06 | Baselines of the primary test made precise: `lm_net_negative` and `finbert_net_negative`; the LLM score is Phi-4's `llm_tone` | "the LM and encoder scores" left two LM scores; uncertainty is not tone; settled before any join with market data (§6.3) |
+| 2026-11-06 | Primary test run once: β_LLM = 1.03 bp per score SD, HAC p = 0.004, T = 243 | the frozen specification, unchanged; diagnostics and robustness follow (§6.3) |
+| 2026-11-06 | Diagnostics: no collinearity, no residual autocorrelation, strong heteroskedasticity, fat tails | reported, not used to change the estimator; HAC is consistent under heteroskedasticity; influence and robustness checks follow (§6.3) |
+| 2026-11-06 | Robustness: HC3, block bootstrap, refit without 19 influential statements and Huber all keep β_LLM positive and significant (Huber 0.73 bp per SD) | the checks fixed in advance; no observation dropped from the primary estimate (§6.3) |
+| 2026-11-06 | Secondary tests listed (14) as one Holm family, before any was run | §6.3 named the kinds of test, not the exact list; fixing it first keeps the multiple-testing correction honest |
+| 2026-11-06 | Secondary tests run: 5 of 14 survive Holm; no effect on the daily ΔDGS2; much weaker on press conference days | reported in full; the conclusion rests on the primary test, limited to the 30-minute window (§6.3) |
+| 2026-11-06 | Out-of-sample test details fixed: full vs baseline vs zero, first forecast year 2000, yearly refits, Clark–West for the nested comparison | §6.4 left the start, the benchmark models and the test open; fixed before running |
+| 2026-11-06 | Out-of-sample: +2.1% R² over the baseline, Clark–West p = 0.003; gains in 2000–2008 and 2022, losses in most later years | reported with the yearly path, which limits the result to the period before routine press conferences (§6.4) |
+| 2026-11-06 | Placebo details fixed: 9,999 permutations of the score on the HAC t; previous score in place of and next to the current one | §6.5 left the test and the statistic open; a persistent score needs the second form to be a fair placebo |
+| 2026-11-06 | Placebos: permutation p = 0.005 and the previous score alone has no effect; next to the current score the previous one is negative (p = 0.034), against the placebo's expectation | reported as a failed expectation; read after the fact as the market pricing the change in tone (§6.5) |
+| 2026-11-06 | Look-ahead tests specified: cutoff interaction (19 statements after, low power stated in advance), anonymisation rule and rescoring, dating probe | §6.7 left the statistics and the anonymisation rule open; fixed before running |
+| 2026-11-06 | Look-ahead: anonymisation barely moves the scores (r = 0.96, β 0.85 vs 0.97 bp per SD); Phi-4 dates pre-cutoff statements within about a year but not post-cutoff ones; no detectable effect after the cutoff (19 statements) | H3 left open and stated as such: the primary result holds for a model that knows the period (§6.7) |
+| 2026-11-06 | Look-ahead-free reader: ChronoGPT vintage Y − 1 for each statement of year Y, next-word likelihood score with anchor calibration, validity bar r ≥ 0.30 with the reference, all fixed before scoring | the instruction-following use failed on invented sentences; the GPU is unavailable after midnight, so the run is on CPU (§6.7) |
+| 2026-11-07 | ChronoGPT reader not valid: r = 0.04 with the reference against the 0.30 bar; its β (+0.28 bp per SD, p = 0.45) reported, not interpreted; post hoc, the score tracks the era and statement length, not the text | the criterion fixed before scoring decides; the raw score's 0.34 is between vintages and seen after the verdict, so not adopted; H3 stays open (§6.7) |
+| 2026-11-07 | Two further H3 tests specified before running: A, the cutoff comparison inside the press conference regime (MDE 1.47 bp per SD before, 2.51 after; reading thresholds 0.5 and 0.9); B, counterfactual hawkish, dovish and neutral rewrites of the guidance sentence of 38 statements, read by Phi-4 | the weak effect after the cutoff has a rival explanation (press conferences) that predicts it without look-ahead; the step from knowing the period to shading the score had not been tested; what was already seen of A is stated with it (§6.7) |
+| 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
+| 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
+| 2026-11-07 | B run: the score follows the text by the pre-set rule; hawkish > dovish FG on 100% of statements before and after the cutoff; the gap is +0.33 larger before (95% −0.07 to +0.68), +0.40 without flagged statements | memory would make known statements resist the edit; they move at least as much; H3 restated: no sign that period knowledge drives the score, borderline shading not excluded (§6.7) |

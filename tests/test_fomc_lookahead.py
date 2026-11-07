@@ -1,0 +1,164 @@
+from text_signals.sources.fomc.lookahead import anonymise, member_names
+
+VOTE = (
+    "Voting for the FOMC monetary policy action were: Alan Greenspan, Chairman; "
+    "William J. McDonough, Vice Chairman; Roger W. Ferguson, Jr.; and Gary H. Stern. "
+    "Voting against was Jeffrey M. Lacker, who preferred an increase."
+)
+
+
+def test_member_names_come_from_vote_paragraphs_and_chair_phrases() -> None:
+    names = member_names([VOTE, "Chairman Alan Greenspan announced today that rates rise."])
+    assert {
+        "Alan Greenspan",
+        "William J. McDonough",
+        "Roger W. Ferguson",
+        "Gary H. Stern",
+        "Jeffrey M. Lacker",
+    } <= names
+    assert "Vice Chairman" not in names
+
+
+def test_anonymise_removes_dates_years_and_names_but_not_policy_wording() -> None:
+    names = member_names([VOTE])
+    text = (
+        "Information received since the Committee met in December suggests growth. "
+        "The Committee expects to keep the target range at 0 to 1/4 percent through mid-2015 "
+        "and will meet on January 28, 2015. Inflation may run below 2 percent. Mr. Lacker "
+        "dissented. In May the Committee acted. " + VOTE
+    )
+    out = anonymise(text, names)
+    for gone in ("December", "2015", "January 28", "Greenspan", "Lacker", "McDonough", "Jr."):
+        assert gone not in out
+    assert "[month]" in out and "[date]" in out and "[year]" in out and "[member]" in out
+    assert "0 to 1/4 percent" in out and "below 2 percent" in out
+    assert "may run" in out  # the modal verb is not a month
+    assert "In [month] the Committee" in out or "In May the Committee" not in out
+
+
+def test_three_part_names_are_removed_whole() -> None:
+    vote = (
+        "Voting for the action were: Ben S. Bernanke, Chairman; Sarah Bloom Raskin; "
+        "and Jeremy C. Stein."
+    )
+    out = anonymise(vote, member_names([vote]))
+    assert "Raskin" not in out and "Bloom" not in out and "Stein" not in out
+
+
+def test_cutoff_split_finds_a_change_in_the_effect() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import cutoff_split
+
+    rng = np.random.default_rng(9)
+    n = 200
+    after = np.arange(n) >= 150
+    tone = rng.normal(0, 1, n)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("1994-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": tone,
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+            "llm_after_cutoff": after,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = np.where(after, 4.0, 0.0) * tone + rng.normal(0, 1, n)
+    r = cutoff_split(table)
+    assert r["n_after"] == 50 and r["interaction_p"] < 0.01
+    assert r["beta_after_per_sd"] > r["beta_before_per_sd"] + 2
+
+
+def test_chrono_check_reports_validity_and_the_regression(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc import lookahead
+
+    rng = np.random.default_rng(10)
+    n = 150
+    tone = rng.normal(0, 1, n)
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": pd.date_range("2000-01-01", periods=n, freq="45D").astype(str),
+            "llm_tone": tone + rng.normal(0, 0.3, n),
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    table["d_UST2Y_30m_bp"] = tone + rng.normal(0, 1, n)
+    chrono = pd.DataFrame({"doc_id": table["doc_id"], "chrono_tone": tone + rng.normal(0, 0.5, n)})
+    reference = pd.DataFrame({"doc_id": table["doc_id"][:60], "reference_tone": tone[:60]})
+    monkeypatch.setattr(lookahead, "reference_tone", lambda model="x": reference)
+    r = lookahead.chrono_check(table, chrono)
+    assert r["valid"] == 1.0 and r["r_with_reference"] > 0.8
+    assert r["chrono_p"] < 0.01 and r["n_regression"] == n
+
+
+def test_chrono_diagnostics_separates_era_from_reading() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import chrono_diagnostics
+
+    rng = np.random.default_rng(11)
+    vintages = np.repeat(np.arange(10), 10)
+    era = vintages / 10.0
+    reference_tone = era + rng.normal(0, 0.3, 100)
+    # Raw log-odds track the era only; the anchor offset removes the era level.
+    raw = era + rng.normal(0, 0.05, 100)
+    records = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(100)],
+            "vintage": vintages,
+            "sentence_log_odds": [[x, x] for x in raw],
+            "chrono_tone": raw - era,
+        }
+    )
+    reference = pd.DataFrame({"doc_id": records["doc_id"], "reference_tone": reference_tone})
+    r = chrono_diagnostics(records, reference)
+    assert r["n_reference"] == 100
+    assert r["r_raw_no_anchor"] > 0.6
+    assert abs(r["r_within_vintage"]) < 0.3 and abs(r["r_calibrated"]) < 0.3
+
+
+def test_regime_cutoff_splits_inside_each_regime() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import regime_cutoff
+
+    rng = np.random.default_rng(12)
+    n = 200
+    dates = pd.date_range("2011-01-01", "2026-10-01", periods=n)
+    tone = rng.normal(0, 1, n)
+    after = dates >= pd.Timestamp("2024-07-01")
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": dates.strftime("%Y-%m-%d"),
+            "llm_tone": tone,
+            "llm_after_cutoff": after,
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    # an effect before the cutoff only
+    table["d_UST2Y_30m_bp"] = np.where(after, 0.0, 3.0) * tone + rng.normal(0, 1, n)
+    press = set(table["release_date"][::2])
+    r = regime_cutoff(table, press)
+    a1, a2 = r["A1_press_days"], r["A2_from_2019"]
+    assert a1["n_before"] + a1["n_after"] == 100
+    assert a2["n_before"] + a2["n_after"] == int((dates >= pd.Timestamp("2019-01-01")).sum())
+    for x in (a1, a2):
+        assert x["beta_before_per_sd"] > 2 and abs(x["beta_after_per_sd"]) < 1
+        assert x["interaction_p"] < 0.01
