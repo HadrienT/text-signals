@@ -1816,6 +1816,32 @@ although BM25 alone did better on these 8 questions. The difference is one quest
 test set reports all three methods, with and without the header, so the header's contribution
 is also measured on questions it was not designed on.
 
+*Answering, fixed before any answer was produced (2026-11-07).* `sources/fomc/qa_answer.py`:
+
+- **Prompt `fomc-qa-v1`.** The rules are written out in the system message, since
+  `llama-server` uses the schema only as a grammar (§5.2):
+  1. use only the passages;
+  2. refuse rather than guess;
+  3. support every claim with a quote copied word for word from the passage text, not from
+     its header;
+  4. for an `as_of` question, answer as someone on that date would.
+
+  The user message gives the question (with its `as_of` date) and the 8 passages, each with
+  its id, its header and its text.
+- **Schema `fomc-qa-answer-v1`**: `refused` first, so the model decides whether to answer
+  before writing anything; then `answer`, then `citations`. The grammar restricts a cited id to
+  the 8 shown, so a citation cannot name a passage that was not retrieved; the check is kept
+  anyway. A refusal has no answer and no citation, and an answer has at least one citation.
+  Otherwise the output is invalid.
+- **Model**: Phi-4, temperature 0, the default decoding of the study. Records are cached with
+  model, weights file, prompt and schema versions.
+- **Verbatim check**: a quote must occur in its passage's text up to case, spacing and
+  typographic quotes, the rule of §6.6.
+- **Metric added to the list above**: *correctness*, whether the answer agrees with the
+  reference answer, judged by Claude like faithfulness. Without it, a well-cited but wrong
+  answer would go unnoticed. The judgments are stored with a short reason for each, and the
+  maintainer checks a sample.
+
 ---
 
 ## 7. Specification freeze
