@@ -1842,6 +1842,29 @@ is also measured on questions it was not designed on.
   answer would go unnoticed. The judgments are stored with a short reason for each, and the
   maintainer checks a sample.
 
+*Answers on the development questions (2026-11-07).* Phi-4 answered the 10 development
+questions: 0 invalid outputs, both unanswerable questions refused (U09, and U10, the
+point-in-time trap). My reading of the eight answers (the judging procedure comes with the test
+set):
+
+| | Answer | Why |
+|---|---|---|
+| L17, P03, M04 | right, well cited | the reference passages were retrieved |
+| M03 | right | one quote ends the sentence early with a period |
+| L13 | half right | the 9 to 3 vote is right; the passage naming the dissenters was not retrieved, and the model says it cannot tell what they wanted |
+| C05 | right, from the minutes | the statements were not retrieved, but the minutes that discuss the change were |
+| C03 | **wrong** | the statements were not retrieved; the answer attributes to March 2009 a discussion from the minutes of January 2009 |
+| P06 | vague | it cites minutes saying the Chairman should describe a path for purchases, without the path |
+
+Three of the four failures follow a retrieval failure. **Citations**: 14 of 18 pass the specified
+check. Of the other four, three are punctuation only: "p.m:" for "p.m.:", a sentence ended
+early with a period, and single quotes where the text has double ones. The fourth quotes words
+that are in another of the shown passages. No quote was invented. The specified check counts a
+comma and a misattribution the same way, so a finer reading is added, **decided after these
+answers and labelled as such**. Each citation is classed as *exact*, *punctuation only* (the
+same words in the same order, punctuation ignored), *wrong passage* (its words are in another
+shown passage) or *not found*. The specified check stays the main figure.
+
 ---
 
 ## 7. Specification freeze
@@ -2014,3 +2037,4 @@ and the report.
 | 2026-11-07 | Passage rules for the index (join wrapped lines, cut units over 250 words, drop units under 5 words): 26,354 passages | the parsed text's blocks were often wrapped lines or a moderator's turn, and some opening statements exceed what the encoder reads (§6.8) |
 | 2026-11-07 | Evaluation set v1: 50 questions (17 lookup, 7 change, 8 press conference, 8 minutes, 10 unanswerable), references found without the retriever, split fixed before any answer | references found with the retriever would inflate its recall; 11 questions are after Phi-4's cutoff, so only reading can answer them (§6.8) |
 | 2026-11-07 | Retrieval: a header from document metadata (type, dates) indexed with each passage, after the development questions showed recall@8 of 25%; BM25 drops zero-score passages; retrieval frozen, fusion kept | passages did not say which document they come from, so questions naming a document or date failed; the method is not switched on 8 questions; the no-header variant is reported on the test set (§6.8) |
+| 2026-11-07 | Development answers: 2 of 2 refusals right; 4 of 8 answers right, 1 half right, 1 vague, 1 wrong (C03); 14 of 18 citations verbatim, 3 punctuation only, 1 attributed to the wrong passage. Citation categories added after seeing them | the strict check counts a comma and a misattribution alike; the categories separate them, and the strict figure stays the main one (§6.8) |

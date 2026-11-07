@@ -7,13 +7,14 @@ and a verbatim quote). The grammar restricts a cited id to the ids shown. Code t
 each quote occurs in its passage, up to case, spacing and typographic quotes, the rule of the
 evidence check (§6.6).
 
-Usage: ``python -m text_signals.sources.fomc.qa_answer run --split dev [--base-url …]``.
+Usage: ``python -m text_signals.sources.fomc.qa_answer {run,recheck} --split dev [--base-url …]``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,24 @@ def json_schema_for(passage_ids: list[str]) -> dict[str, Any]:
 class CitationCheck(BaseModel):
     passage_id: str
     in_retrieved: bool
-    verbatim: bool
+    verbatim: bool  # the specified check: up to case, spacing and typographic quotes
+    # Added after the development questions (§6.8): the same words in the same order, all
+    # punctuation ignored; and, if not in the cited passage, which other shown passage has them.
+    same_words: bool
+    found_in: list[str]
+
+    @property
+    def category(self) -> str:
+        """exact | punctuation | wrong_passage | not_found."""
+        if self.verbatim:
+            return "exact"
+        if self.same_words:
+            return "punctuation"
+        return "wrong_passage" if self.found_in else "not_found"
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
 def check_citations(answer: Answer, shown: list[Passage]) -> list[CitationCheck]:
@@ -103,11 +121,24 @@ def check_citations(answer: Answer, shown: list[Passage]) -> list[CitationCheck]
     out = []
     for c in answer.citations:
         p = by_id.get(c.passage_id)
+        words = _words(c.quote)
         verbatim = (
             p is not None and bool(c.quote.strip()) and (_normalise(c.quote) in _normalise(p.text))
         )
+        same_words = p is not None and bool(words) and words in _words(p.text)
+        found_in = (
+            []
+            if same_words or not words
+            else [o.passage_id for o in shown if words in _words(o.text)]
+        )
         out.append(
-            CitationCheck(passage_id=c.passage_id, in_retrieved=p is not None, verbatim=verbatim)
+            CitationCheck(
+                passage_id=c.passage_id,
+                in_retrieved=p is not None,
+                verbatim=verbatim,
+                same_words=same_words,
+                found_in=found_in,
+            )
         )
     return out
 
@@ -177,7 +208,7 @@ def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
                 "refused": None if answer is None else answer.refused,
                 "answer": None if answer is None else answer.answer,
                 "citations": [] if answer is None else [c.model_dump() for c in answer.citations],
-                "checks": [c.model_dump() for c in checks],
+                "checks": [c.model_dump() | {"category": c.category} for c in checks],
                 "latency_s": r.latency_s,
             }
         )
@@ -186,20 +217,42 @@ def run(split_name: str, base_url: str) -> list[dict[str, Any]]:
     return rows
 
 
+def recheck(split_name: str) -> list[dict[str, Any]]:
+    """Recompute the citation checks of stored answers, without the model."""
+    from text_signals.sources.fomc.qa import all_passages, load_documents
+
+    by_id = {p.passage_id: p for p in all_passages(load_documents())}
+    path = OUT / f"answers-{split_name}.json"
+    rows: list[dict[str, Any]] = json.loads(path.read_text())
+    for r in rows:
+        if not r["valid"]:
+            continue
+        answer = Answer.model_validate(
+            {"refused": r["refused"], "answer": r["answer"], "citations": r["citations"]}
+        )
+        checks = check_citations(answer, [by_id[i] for i in r["retrieved"]])
+        r["checks"] = [c.model_dump() | {"category": c.category} for c in checks]
+    path.write_text(json.dumps(rows, indent=1))
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["run"])
+    parser.add_argument("cmd", choices=["run", "recheck"])
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
-    rows = run(args.split, args.base_url)
+    rows = run(args.split, args.base_url) if args.cmd == "run" else recheck(args.split)
     invalid = sum(not r["valid"] for r in rows)
     refused = sum(bool(r["refused"]) for r in rows)
     checks = [c for r in rows for c in r["checks"]]
     verbatim = sum(c["verbatim"] for c in checks)
+    categories: dict[str, int] = {}
+    for c in checks:
+        categories[c["category"]] = categories.get(c["category"], 0) + 1
     print(
         f"{len(rows)} questions, {invalid} invalid, {refused} refused; "
-        f"{verbatim}/{len(checks)} citations verbatim"
+        f"{verbatim}/{len(checks)} citations verbatim; {categories}"
     )
 
 

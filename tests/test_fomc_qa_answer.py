@@ -61,3 +61,23 @@ def test_citation_check_is_verbatim_up_to_case_spacing_and_quotes() -> None:
     checks = check_citations(a, [P1])
     assert [c.verbatim for c in checks] == [True, False, False, False]
     assert [c.in_retrieved for c in checks] == [True, True, True, False]
+
+
+def test_citation_categories_separate_punctuation_from_misattribution() -> None:
+    p2 = Passage(
+        "fomc-minutes-20040701#p34",
+        "fomc-minutes-20040701",
+        "minutes",
+        date(2004, 7, 1),
+        'The pace would be "measured." All of the members agreed that the reference to '
+        "patience was no longer warranted.",
+    )
+    punct = Citation(passage_id=p2.passage_id, quote="The pace would be 'measured.'")
+    wrong = Citation(
+        passage_id=P1.passage_id, quote="the reference to patience was no longer warranted"
+    )
+    absent = Citation(passage_id=P1.passage_id, quote="rates will rise sharply")
+    a = Answer(refused=False, answer="x", citations=[punct, wrong, absent])
+    checks = check_citations(a, [P1, p2])
+    assert [c.category for c in checks] == ["punctuation", "wrong_passage", "not_found"]
+    assert checks[1].found_in == [p2.passage_id]
