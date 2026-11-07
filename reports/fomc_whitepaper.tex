@@ -140,7 +140,7 @@ statement as evidence. The tone score is the equal-weight mean of the filled sta
 no weight is fitted to the outcome.
 
 There is no ground truth for the extraction. Hand labelling was stopped after five practice
-statements, and a stronger model (Claude) served as a blind \emph{reference reader}. Agreement
+statements, and a stronger model (Claude Opus 5.5) served as a blind \emph{reference reader}. Agreement
 with it measures consistency, not correctness. Two checks need no reader: the decision and its
 size against FRED, and whether each evidence span appears verbatim. On a fresh confirmation
 sample, fixed in advance, Phi-4 gave 0 invalid outputs, a tone correlation of 0.86 with the
@@ -267,7 +267,7 @@ the result.
 % ================================================================
 \section{Does a frontier model read better?}
 
-As an exploratory second reader, specified before any reading, Claude Opus scored all 250
+As an exploratory second reader, specified before any reading, Claude Opus 5.5 scored all 250
 statements. For economy it read them in batches rather than one per call as the local model
 did, on anonymised texts shuffled across years to limit recognition.
 
