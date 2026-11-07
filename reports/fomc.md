@@ -74,7 +74,7 @@ variable, after dropping a misdated USMPD row and two statements released with a
 Every field carries a span copied verbatim from the statement as evidence. The tone score is the
 equal-weight mean of the filled stance fields, so no weight is fitted to the outcome.
 
-**Evaluation without ground truth.** Hand labelling by the maintainer stopped after five practice
+**Evaluation without ground truth.** My hand labelling stopped after five practice
 statements: it was too slow for a non-specialist. Claude (Opus) became a *reference reader*,
 reading 65 statements blind. Agreement with it measures consistency, not truth (§6.6). Checks
 that need no reader are used alongside: the decision and its size against FRED, and whether each

@@ -3,7 +3,7 @@
 **Extracting investment signals from text corpora with local LLMs, and measuring honestly
 whether they hold up.**
 
-Status: case study 1 (FOMC communications) is complete. Read the five-page
+Status: case study 1 (FOMC communications) is complete. Read the
 [white paper (PDF)](reports/fomc_whitepaper.pdf) or the longer
 [research report](reports/fomc.md); the [protocol](docs/case-studies/fomc.md) records every
 decision with its date and reason.
@@ -146,3 +146,7 @@ uv sync
 just lint   # ruff + mypy --strict
 just test
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).

@@ -10,3 +10,6 @@ __pycache__/
 data/*
 !data/README.md
 !data/labels/
+
+# Local assistant instructions
+CLAUDE.md
