@@ -1600,6 +1600,77 @@ of look-ahead. This is what the MDE said in advance (1.47 and 2.51 bp per SD aga
 of 0.5 to 1). The question is moved to B, which does not depend on the number of statements
 after the cutoff.
 
+**Result of B (2026-11-07).** Phi-4 (`/opt/llm/models/phi-4-Q8_0.gguf`, the same weights as
+the original readings) read the 114 edited texts, with 0 invalid answers, in 16 minutes. The
+server was switched to the `research` profile for the run and back to `code` afterwards. Then
+`python -m text_signals.sources.fomc.counterfactual report`. Forward guidance value (FG,
+−2 to +2):
+
+| | n | FG original | FG hawkish | FG dovish | B1: hawkish > dovish | B2: hawkish ≥ +1 / dovish ≤ −1 | B3: neutral changed | `llm_tone` gap |
+|---|---|---|---|---|---|---|---|---|
+| Before the cutoff, all | 20 | −0.05 | +1.15 | −1.40 | **100%** | 100% / 85% | 20% | +0.94 |
+| After the cutoff, all | 18 | +0.11 | +1.00 | −1.22 | **100%** | 100% / 100% | 11% | +0.44 |
+| Before, without other rate guidance | 11 | −0.09 | +1.09 | −1.55 | **100%** | 100% / 91% | 9% | +1.27 |
+| After, without other rate guidance | 17 | +0.06 | +1.00 | −1.24 | **100%** | 100% / 100% | 12% | +0.44 |
+
+B4, the mean FG(hawkish) − FG(dovish) before the cutoff minus after: **+0.33** (bootstrap
+95% interval −0.07 to +0.68) on all statements, and +0.40 (−0.05 to +0.79) without the flagged
+ones. The edits move the statements the model may remember *at least as much* as those it
+cannot have seen. The dating probe placed 18 of the 20 statements before the cutoff within one
+year. Those 18 move like the rest (FG gap 2.56).
+
+**By the rule fixed in advance, the score follows the text**, on all statements and without
+the flagged ones: B1 is 100% before the cutoff (bar 80%), and B4 favours the statements before
+the cutoff, with an interval that holds zero. Neither condition for "memory overrides the
+text" is met.
+
+Looked at after the verdict (descriptive, not part of the rule):
+
+- **The closest comparison.** 2024-05-01 (before the cutoff) and 2024-07-31 (after) have the
+  same guidance sentence and got the same edits. Phi-4's FG is identical on both: original +1,
+  hawkish +1, dovish −1, neutral +1.
+- **Where the edit falls short.** The dovish version stays at FG +1 in three statements:
+  2004-06-30, 2006-05-10 and 2022-11-02. All three announce a rate increase. Two of them are
+  flagged: 2004-06-30 keeps "accommodation can be removed at a pace that is likely to be
+  measured", and 2022-11-02 keeps "the pace of future increases". So the text left in place,
+  the decision or memory can each account for these cases; B cannot tell which. Even there,
+  FG(hawkish) is above FG(dovish).
+- **Ceiling.** Phi-4 almost never gives +2 to the hawkish rewrites (3 of 38), only +1. The
+  scale is used asymmetrically, the same way before and after the cutoff.
+- **The larger tone gap before the cutoff** (+0.94 against +0.44) comes mostly from the number
+  of stance fields filled: 3.8 on average before against 4.8 after, so FG weighs more in the
+  mean. The other fields also move a little in the edit's direction before the cutoff (summed
+  over the four, +0.15 for hawkish and +0.10 for dovish, against −0.06 after). Memory would pull
+  them the other way.
+- **Neutral rewrites.** 4 of 20 before and 2 of 18 after change FG. One of them is probably a
+  fault of the rewrite rather than noise in the reading: for 2021-12-15, "With inflation having
+  exceeded 2 percent" became "Because inflation has been above 2 percent", which makes the
+  sentence more hawkish, and FG moves from −1 to +1. On 2026-07-29 the neutral rewrite ("The
+  Committee is committed to delivering price stability") gets no FG at all. That original's
+  FG of +1 on "The Committee will deliver price stability" was itself a loose reading.
+
+**What H3 now rests on.**
+
+| Test | What it asks | Result |
+|---|---|---|
+| Cutoff split | weaker after the cutoff? | not detectable (n = 19; no power) |
+| A, inside the regime | does the press conference regime explain the weakness? | inconclusive: halves the effect, does not remove it |
+| Anonymisation | does the reading lean on dates and names? | no (r = 0.96, β 0.85 vs 0.97) |
+| Dating probe | does the model know the period? | yes, within about a year before the cutoff |
+| ChronoGPT | a reader without look-ahead | too weak to read the statements |
+| B, counterfactual edits | does the score follow the text against memory? | yes, as much before the cutoff as after |
+
+The look-ahead argument needs two steps: the model knows the period (the probe shows it does),
+and that knowledge shades the score. B tests the second step on the score's main channel and
+finds no sign of it. When the forward guidance sentence of a statement the model knows is
+rewritten, the score follows the rewrite every time, by as much as on statements it cannot
+have seen. The reading of the primary result changes accordingly. **The LLM score is a reading
+of the text by a model that knows the period, and B finds no sign that this knowledge drives
+the score.** H3 is not closed. B cannot exclude memory shading borderline readings where text
+and memory agree (stated before the run), and the weaker effect after the cutoff is
+unexplained but too noisy to interpret. A longer run of statements after the cutoff is still
+what would settle that.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1777,3 +1848,4 @@ and the report.
 | 2026-11-07 | Two further H3 tests specified before running: A, the cutoff comparison inside the press conference regime (MDE 1.47 bp per SD before, 2.51 after; reading thresholds 0.5 and 0.9); B, counterfactual hawkish, dovish and neutral rewrites of the guidance sentence of 38 statements, read by Phi-4 | the weak effect after the cutoff has a rival explanation (press conferences) that predicts it without look-ahead; the step from knowing the period to shading the score had not been tested; what was already seen of A is stated with it (§6.7) |
 | 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
 | 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
+| 2026-11-07 | B run: the score follows the text by the pre-set rule; hawkish > dovish FG on 100% of statements before and after the cutoff; the gap is +0.33 larger before (95% −0.07 to +0.68), +0.40 without flagged statements | memory would make known statements resist the edit; they move at least as much; H3 restated: no sign that period knowledge drives the score, borderline shading not excluded (§6.7) |
