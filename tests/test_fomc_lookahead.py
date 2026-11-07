@@ -127,3 +127,38 @@ def test_chrono_diagnostics_separates_era_from_reading() -> None:
     assert r["n_reference"] == 100
     assert r["r_raw_no_anchor"] > 0.6
     assert abs(r["r_within_vintage"]) < 0.3 and abs(r["r_calibrated"]) < 0.3
+
+
+def test_regime_cutoff_splits_inside_each_regime() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import regime_cutoff
+
+    rng = np.random.default_rng(12)
+    n = 200
+    dates = pd.date_range("2011-01-01", "2026-10-01", periods=n)
+    tone = rng.normal(0, 1, n)
+    after = dates >= pd.Timestamp("2024-07-01")
+    table = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(n)],
+            "release_date": dates.strftime("%Y-%m-%d"),
+            "llm_tone": tone,
+            "llm_after_cutoff": after,
+            "MP1_bp": rng.normal(0, 5, n),
+            "lm_net_negative": rng.normal(0, 0.01, n),
+            "finbert_net_negative": rng.normal(0, 0.2, n),
+            "in_main_sample": True,
+        }
+    )
+    # an effect before the cutoff only
+    table["d_UST2Y_30m_bp"] = np.where(after, 0.0, 3.0) * tone + rng.normal(0, 1, n)
+    press = set(table["release_date"][::2])
+    r = regime_cutoff(table, press)
+    a1, a2 = r["A1_press_days"], r["A2_from_2019"]
+    assert a1["n_before"] + a1["n_after"] == 100
+    assert a2["n_before"] + a2["n_after"] == int((dates >= pd.Timestamp("2019-01-01")).sum())
+    for x in (a1, a2):
+        assert x["beta_before_per_sd"] > 2 and abs(x["beta_after_per_sd"]) < 1
+        assert x["interaction_p"] < 0.01

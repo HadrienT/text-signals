@@ -142,10 +142,16 @@ def run_probe(base_url: str) -> list[ExtractionRecord]:
 def cutoff_split(table: pd.DataFrame) -> dict[str, float]:
     """β of ``llm_tone`` before and after the training cutoff, and the HAC test that they are
     equal (an interaction in the primary regression)."""
+    from text_signals.sources.fomc import study
+
+    return _split_at_cutoff(study.primary_sample(table))
+
+
+def _split_at_cutoff(sample: pd.DataFrame) -> dict[str, float]:
     from text_signals.event_study import fit
     from text_signals.sources.fomc import study
 
-    sample = study.primary_sample(table).copy()
+    sample = sample.copy()
     sample["after"] = sample["llm_after_cutoff"].astype(bool).astype(float)
     sample["tone_x_after"] = sample[study.SCORE] * sample["after"]
     regs = [study.SCORE, "tone_x_after", "after", study.CONTROL, *study.BASELINES]
@@ -160,10 +166,31 @@ def cutoff_split(table: pd.DataFrame) -> dict[str, float]:
         "n_after": float(after.n),
         "beta_before_per_sd": b.beta * sd,
         "se_before_per_sd": b.se * sd,
+        "p_before": before.wald_p,
         "beta_after_per_sd": a.beta * sd,
         "se_after_per_sd": a.se * sd,
+        "p_after": after.wald_p,
         "interaction_per_sd": pooled.coefficients["tone_x_after"].beta * sd,
         "interaction_p": pooled.wald_p,
+    }
+
+
+PRESS_REGIME_START = "2019-01-01"  # every meeting has a press conference from here (§6.7, A2)
+
+
+def regime_cutoff(table: pd.DataFrame, press_days: set[str]) -> dict[str, dict[str, float]]:
+    """Test A of §6.7: the cutoff split inside the press conference regime.
+
+    A1: statements released on a press conference day. A2: statements from 1 January 2019.
+    Each gives β per SD before and after the cutoff and the HAC interaction test.
+    """
+    from text_signals.sources.fomc import study
+
+    sample = study.primary_sample(table)
+    dates = sample["release_date"].astype(str)
+    return {
+        "A1_press_days": _split_at_cutoff(sample[dates.isin(press_days)]),
+        "A2_from_2019": _split_at_cutoff(sample[dates >= PRESS_REGIME_START]),
     }
 
 
@@ -329,7 +356,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "cmd",
-        choices=["anonymised-run", "probe-run", "show", "report", "chrono", "chrono-diagnostics"],
+        choices=[
+            "anonymised-run",
+            "probe-run",
+            "show",
+            "report",
+            "chrono",
+            "chrono-diagnostics",
+            "regime",
+        ],
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
@@ -345,6 +380,20 @@ def main() -> None:
         table = study.study_table(pd.read_csv(study.EVENTS), pd.read_csv(study.LLM_SCORES))
         for k, v in chrono_check(table, pd.read_csv(CHRONO_SCORES)).items():
             print(f"{k}: {v:.4f}")
+    elif args.cmd == "regime":
+        from text_signals.sources.fomc import study
+
+        table = study.study_table(pd.read_csv(study.EVENTS), pd.read_csv(study.LLM_SCORES))
+        for name, r in regime_cutoff(table, study.press_conference_days()).items():
+            print(name)
+            for side in ("before", "after"):
+                b, se = r[f"beta_{side}_per_sd"], r[f"se_{side}_per_sd"]
+                print(
+                    f"  {side}: n={r[f'n_{side}']:.0f}  beta/SD={b:+.2f}  se={se:.2f}  "
+                    f"95% [{b - 1.96 * se:+.2f}, {b + 1.96 * se:+.2f}]  "
+                    f"p={r[f'p_{side}']:.3f}"
+                )
+            print(f"  interaction/SD={r['interaction_per_sd']:+.2f}  p={r['interaction_p']:.3f}")
     elif args.cmd == "chrono-diagnostics":
         from text_signals.sources.fomc.chrono_scores import CACHE
 
