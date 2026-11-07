@@ -1783,6 +1783,39 @@ question, was released on or before that date. The split (seed 20261109, two dev
 questions per type) is stored in `data/labels/fomc_qa_v1_split.json`: development C03, C05, L13,
 L17, M03, M04, P03, P06, U09 and U10, test the other 40.
 
+*Retrieval on the development questions, and the one change it led to (2026-11-07).* As
+specified, BM25, the encoder and their fusion were measured on the 8 answerable development
+questions. First result: recall@8 of 25% for all three (2 of 8). Most failures had a single
+cause. A passage does not say which document it comes from. "The Federal Open Market Committee
+approved the following statement for release by a 9 – 3 vote" contains neither the date nor the
+words "July 2026", which only the document's metadata holds. And the minutes, which make up
+18,294 of the 26,354 passages and discuss the same topics, crowd out the statements.
+
+**Change: a header from the document's metadata is indexed with each passage**, for example
+"FOMC statement released July 29, 2026." or "Minutes of the FOMC meeting held January 26, 2022,
+released February 16, 2022." The header uses the document type and dates only, nothing from
+the questions. It is not part of the text a citation quotes. A second fix came from a unit test:
+BM25 no longer returns passages that share no term with the query. It changed no development
+result.
+
+| Development questions (n = 8) | recall@1 | recall@5 | recall@8 | MRR@8 |
+|---|---|---|---|---|
+| BM25, no header | 0.12 | 0.25 | 0.25 | 0.16 |
+| Encoder, no header | 0.00 | 0.25 | 0.25 | 0.05 |
+| Fusion, no header | 0.00 | 0.25 | 0.25 | 0.06 |
+| BM25, header | 0.25 | 0.50 | **0.75** | 0.38 |
+| Encoder, header | 0.25 | 0.25 | 0.38 | 0.27 |
+| Fusion, header | 0.25 | **0.62** | 0.62 | 0.41 |
+
+The remaining failures: the two change questions (C03 and C05), where the minutes that
+discuss the change in wording rank above the statements that make it; and P06, where the right
+press conference is found but not the right paragraph.
+
+**Retrieval is frozen here.** The fusion stays the method passed to the model, as specified,
+although BM25 alone did better on these 8 questions. The difference is one question, and the
+test set reports all three methods, with and without the header, so the header's contribution
+is also measured on questions it was not designed on.
+
 ---
 
 ## 7. Specification freeze
@@ -1954,3 +1987,4 @@ and the report.
 | 2026-11-07 | Retrieval agent: in-repo index (paragraph units, BM25 + bge-small fused by RRF, point-in-time `as_of` filter), Phi-4 answers with verified verbatim citations; 50 questions written and committed before any run, 10 dev / 40 test | `kbase` needs Postgres and a second repository, so the pipeline would not rerun from this one; the corpus fits in memory; the dev/test split keeps the questions from being used to tune the system (§6.8) |
 | 2026-11-07 | Passage rules for the index (join wrapped lines, cut units over 250 words, drop units under 5 words): 26,354 passages | the parsed text's blocks were often wrapped lines or a moderator's turn, and some opening statements exceed what the encoder reads (§6.8) |
 | 2026-11-07 | Evaluation set v1: 50 questions (17 lookup, 7 change, 8 press conference, 8 minutes, 10 unanswerable), references found without the retriever, split fixed before any answer | references found with the retriever would inflate its recall; 11 questions are after Phi-4's cutoff, so only reading can answer them (§6.8) |
+| 2026-11-07 | Retrieval: a header from document metadata (type, dates) indexed with each passage, after the development questions showed recall@8 of 25%; BM25 drops zero-score passages; retrieval frozen, fusion kept | passages did not say which document they come from, so questions naming a document or date failed; the method is not switched on 8 questions; the no-header variant is reported on the test set (§6.8) |

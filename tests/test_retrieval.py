@@ -114,3 +114,15 @@ def test_passage_fingerprint_changes_with_text() -> None:
     a = [Passage("a#p1", "a", "statement", date(2000, 1, 1), "one")]
     b = [Passage("a#p1", "a", "statement", date(2000, 1, 1), "two")]
     assert passages_sha256(a) != passages_sha256(b)
+
+
+def test_header_is_indexed_but_not_part_of_the_text() -> None:
+    doc = Doc("s", "statement", date(2026, 7, 29), "The vote was 9 to 3 on this statement today.")
+    (p,) = passages(doc, "FOMC statement released July 29, 2026.")
+    assert p.text == "The vote was 9 to 3 on this statement today."
+    assert p.indexed_text().startswith("FOMC statement released July 29, 2026.")
+    assert p.indexed_text(with_header=False) == p.text
+    assert passages_sha256([p]) != passages_sha256([p], with_header=False)
+    with_h = Index([p], with_header=True).search("July 2026", method="bm25")
+    without = Index([p], with_header=False).search("July 2026", method="bm25")
+    assert len(with_h) == 1 and without == []

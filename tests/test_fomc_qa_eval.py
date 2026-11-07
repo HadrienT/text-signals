@@ -56,3 +56,13 @@ def test_split_draws_two_dev_questions_per_type_reproducibly() -> None:
             by_type[q.type] = by_type.get(q.type, 0) + 1
     assert by_type == {t: 2 for t in {q.type for q in qs}}
     assert sum(s == "test" for s in split.values()) == len(qs) - 10
+
+
+def test_first_hit_rank_and_metrics() -> None:
+    from text_signals.sources.fomc.qa_eval import first_hit_rank, retrieval_metrics
+
+    assert first_hit_rank(["a", "b", "c"], ["c", "b"]) == 2
+    assert first_hit_rank(["a"], ["z"]) is None
+    m = retrieval_metrics([1, 3, None, 9])
+    assert m["recall@1"] == 0.25 and m["recall@5"] == 0.5 and m["recall@8"] == 0.5
+    assert m["mrr@8"] == (1 + 1 / 3) / 4

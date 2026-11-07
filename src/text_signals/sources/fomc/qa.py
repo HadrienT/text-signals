@@ -44,20 +44,39 @@ def load_documents(root: Path = CORPUS) -> list[Document]:
     return sorted(docs, key=lambda d: (d.release_date, d.doc_id))
 
 
+def _day(d: date) -> str:
+    return f"{d:%B} {d.day}, {d.year}"
+
+
+def header(doc: Document) -> str:
+    """The context header of a document's passages, from its metadata only (§6.8)."""
+    if doc.doc_type == "minutes" and doc.event_date is not None:
+        return (
+            f"Minutes of the FOMC meeting held {_day(doc.event_date)}, "
+            f"released {_day(doc.release_date)}."
+        )
+    if doc.doc_type == "press_conference":
+        return f"FOMC press conference of {_day(doc.release_date)}."
+    return f"FOMC statement released {_day(doc.release_date)}."
+
+
 def all_passages(docs: list[Document]) -> list[Passage]:
-    return [p for d in docs for p in passages(d)]
+    return [p for d in docs for p in passages(d, header(d))]
 
 
-def embeddings(items: list[Passage], embed: Embed | None = None) -> FloatArray:
-    """Passage embeddings, from the cache when the passages and the encoder are unchanged."""
-    key = f"{BGE_SMALL.revision[:8]}-{passages_sha256(items)[:16]}"
+def embeddings(
+    items: list[Passage], embed: Embed | None = None, *, with_header: bool = True
+) -> FloatArray:
+    """Passage embeddings, from the cache when the indexed texts and the encoder are unchanged."""
+    fingerprint = passages_sha256(items, with_header)
+    key = f"{BGE_SMALL.revision[:8]}-{fingerprint[:16]}"
     path = OUT / f"embeddings-{key}.npy"
     if path.exists():
         matrix: FloatArray = np.load(path).astype(np.float32)
         return matrix
     if embed is None:
         embed = load_dense(BGE_SMALL, MODELS)
-    matrix = embed([p.text for p in items])
+    matrix = embed([p.indexed_text(with_header) for p in items])
     OUT.mkdir(parents=True, exist_ok=True)
     np.save(path, matrix)
     (OUT / f"embeddings-{key}.json").write_text(
@@ -67,7 +86,8 @@ def embeddings(items: list[Passage], embed: Embed | None = None) -> FloatArray:
                 "revision": BGE_SMALL.revision,
                 "weights_sha256": BGE_SMALL.weights_sha256,
                 "n_passages": len(items),
-                "passages_sha256": passages_sha256(items),
+                "with_header": with_header,
+                "passages_sha256": fingerprint,
             },
             indent=1,
         )
@@ -75,9 +95,9 @@ def embeddings(items: list[Passage], embed: Embed | None = None) -> FloatArray:
     return matrix
 
 
-def build_index(embed: Embed | None = None) -> Index:
+def build_index(embed: Embed | None = None, *, with_header: bool = True) -> Index:
     items = all_passages(load_documents())
-    return Index(items, embeddings(items, embed))
+    return Index(items, embeddings(items, embed, with_header=with_header), with_header=with_header)
 
 
 def main() -> None:
@@ -97,8 +117,9 @@ def main() -> None:
         words = [len(p.text.split()) for p in items]
         print(f"{len(docs)} documents, {len(items)} passages {by_type}")
         print(f"words per passage: median {int(np.median(words))}, max {max(words)}")
-        matrix = embeddings(items)
-        print(f"embeddings {matrix.shape}")
+        for with_header in (True, False):
+            matrix = embeddings(items, with_header=with_header)
+            print(f"embeddings (header={with_header}) {matrix.shape}")
         return
     embed = load_dense(BGE_SMALL, MODELS)
     index = build_index(embed)

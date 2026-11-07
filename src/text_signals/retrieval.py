@@ -9,6 +9,10 @@ The unit is the **passage** (protocol §6.8), cut from a document's parsed text 
    ``PIECE_WORDS`` words (a dense encoder reads about 380 words at most);
 4. units shorter than ``MIN_WORDS`` words are not indexed (headers, a moderator's "Victoria.").
 
+A passage can carry a **header** built from its document's metadata (for example "FOMC
+statement released July 29, 2026."). The header is indexed with the passage, so that a question
+naming a document or a date can find it, but it is not part of the text a citation quotes.
+
 A passage keeps its document's release date, and every search can carry an ``as_of`` date: only
 passages released on or before it are ranked, so a question asked as of a date gets no help
 from what was written later (the point-in-time rule of the study).
@@ -31,7 +35,7 @@ import numpy.typing as npt
 
 from text_signals.encoders import split_sentences
 
-PASSAGE_VERSION = "1"
+PASSAGE_VERSION = "2"
 MAX_WORDS = 250
 PIECE_WORDS = 200
 MIN_WORDS = 5
@@ -59,6 +63,11 @@ class Passage:
     doc_type: str
     release_date: date
     text: str
+    header: str = ""
+
+    def indexed_text(self, with_header: bool = True) -> str:
+        """What the retrievers read: the header (if any and wanted) then the passage."""
+        return f"{self.header} {self.text}" if with_header and self.header else self.text
 
 
 def _blocks(text: str) -> list[str]:
@@ -94,11 +103,11 @@ def _pieces(unit: str) -> list[str]:
     return out
 
 
-def passages(doc: HasText) -> list[Passage]:
-    """The indexed passages of one document, in reading order."""
+def passages(doc: HasText, header: str = "") -> list[Passage]:
+    """The indexed passages of one document, in reading order, each with ``header``."""
     units = [p for b in _blocks(doc.text) for p in _pieces(b) if len(p.split()) >= MIN_WORDS]
     return [
-        Passage(f"{doc.doc_id}#p{i}", doc.doc_id, doc.doc_type, doc.release_date, text)
+        Passage(f"{doc.doc_id}#p{i}", doc.doc_id, doc.doc_type, doc.release_date, text, header)
         for i, text in enumerate(units, start=1)
     ]
 
@@ -232,9 +241,16 @@ class Hit:
 class Index:
     """BM25 and dense embeddings over the same passages, searched with an ``as_of`` filter."""
 
-    def __init__(self, items: Sequence[Passage], embeddings: FloatArray | None = None):
+    def __init__(
+        self,
+        items: Sequence[Passage],
+        embeddings: FloatArray | None = None,
+        *,
+        with_header: bool = True,
+    ):
         self.passages = list(items)
-        self.bm25 = BM25([tokenize(p.text) for p in self.passages])
+        self.with_header = with_header
+        self.bm25 = BM25([tokenize(p.indexed_text(with_header)) for p in self.passages])
         self.embeddings = embeddings
         self.dates = np.array([p.release_date.toordinal() for p in self.passages])
 
@@ -261,7 +277,9 @@ class Index:
         )
         rankings = []
         if method in ("bm25", "hybrid"):
-            rankings.append(self._ranking(self.bm25.scores(tokenize(query)), allowed, candidates))
+            lexical = self.bm25.scores(tokenize(query))
+            # a passage sharing no term with the query is not a lexical candidate
+            rankings.append(self._ranking(lexical, allowed & (lexical > 0), candidates))
         if method in ("dense", "hybrid"):
             if self.embeddings is None or query_embedding is None:
                 raise ValueError("dense search needs passage and query embeddings")
@@ -271,12 +289,12 @@ class Index:
         return [Hit(self.passages[i], r) for r, i in enumerate(order[:k], start=1)]
 
 
-def passages_sha256(items: Sequence[Passage]) -> str:
-    """A fingerprint of the passage set, to key an embedding cache."""
+def passages_sha256(items: Sequence[Passage], with_header: bool = True) -> str:
+    """A fingerprint of the indexed texts, to key an embedding cache."""
     h = hashlib.sha256(PASSAGE_VERSION.encode())
     for p in items:
         h.update(p.passage_id.encode())
         h.update(b"\0")
-        h.update(p.text.encode())
+        h.update(p.indexed_text(with_header).encode())
         h.update(b"\0")
     return h.hexdigest()

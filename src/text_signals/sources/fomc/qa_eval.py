@@ -6,7 +6,7 @@ for a question asked ``as_of`` a date, was released on or before it; unanswerabl
 no reference. ``assign_split`` draws the development questions, two of each type, with a fixed
 seed; the split is stored in ``data/labels/fomc_qa_v1_split.json`` before any system answer.
 
-Usage: ``python -m text_signals.sources.fomc.qa_eval split``.
+Usage: ``python -m text_signals.sources.fomc.qa_eval {split,retrieval} [--split dev|test]``.
 """
 
 from __future__ import annotations
@@ -83,10 +83,77 @@ def assign_split(questions: list[Question], seed: int = SPLIT_SEED) -> dict[str,
     return split
 
 
+KS = (1, 5, 8)
+
+
+def first_hit_rank(retrieved: list[str], references: list[str]) -> int | None:
+    """Rank (from 1) of the first reference passage among the retrieved, None if absent."""
+    refs = set(references)
+    return next((i for i, pid in enumerate(retrieved, start=1) if pid in refs), None)
+
+
+def retrieval_metrics(ranks: list[int | None], ks: tuple[int, ...] = KS) -> dict[str, float]:
+    """recall@k (share with a reference in the top k) and MRR@max(k) (0 when none in it)."""
+    n = len(ranks)
+    out = {"n": float(n)}
+    for k in ks:
+        out[f"recall@{k}"] = sum(r is not None and r <= k for r in ranks) / n
+    top = max(ks)
+    out[f"mrr@{top}"] = sum(1 / r for r in ranks if r is not None and r <= top) / n
+    return out
+
+
+def load_split(path: Path = SPLIT) -> dict[str, str]:
+    split: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))["split"]
+    return split
+
+
+RETRIEVAL_OUT = Path("data/interim/fomc/retrieval")
+
+
+def run_retrieval(split_name: str) -> dict[str, dict[str, float]]:
+    """recall@k and MRR of BM25, the encoder and their fusion on one split (answerable only),
+    with and without the passage headers."""
+    from text_signals.retrieval import BGE_SMALL, Method, load_dense
+    from text_signals.sources.fomc.qa import MODELS, build_index
+
+    embed = load_dense(BGE_SMALL, MODELS)
+    indexes = {h: build_index(embed, with_header=h) for h in (True, False)}
+    split = load_split()
+    qs = [q for q in load_questions() if split[q.qid] == split_name and q.answerable]
+    rows = []
+    out = {}
+    methods: tuple[Method, ...] = ("bm25", "dense", "hybrid")
+    for with_header, method in [(h, m) for h in (True, False) for m in methods]:
+        index = indexes[with_header]
+        name = f"{method}{'' if with_header else '-noheader'}"
+        ranks: list[int | None] = []
+        for q in qs:
+            emb = embed([BGE_SMALL.query_prefix + q.question])[0]
+            hits = index.search(
+                q.question, k=max(KS), as_of=q.as_of, method=method, query_embedding=emb
+            )
+            ids = [h.passage.passage_id for h in hits]
+            rank = first_hit_rank(ids, q.reference_passages)
+            ranks.append(rank)
+            rows.append({"qid": q.qid, "method": name, "rank": rank, "retrieved": ids})
+        out[name] = retrieval_metrics(ranks)
+    RETRIEVAL_OUT.mkdir(parents=True, exist_ok=True)
+    (RETRIEVAL_OUT / f"retrieval_{split_name}.json").write_text(
+        json.dumps({"metrics": out, "rows": rows}, indent=1)
+    )
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["split"])
-    parser.parse_args()
+    parser.add_argument("cmd", choices=["split", "retrieval"])
+    parser.add_argument("--split", choices=["dev", "test"], default="dev")
+    args = parser.parse_args()
+    if args.cmd == "retrieval":
+        for method, m in run_retrieval(args.split).items():
+            print(method, {k: round(v, 3) for k, v in m.items()})
+        return
     from text_signals.sources.fomc.qa import all_passages, load_documents
 
     questions = load_questions()
