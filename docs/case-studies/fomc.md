@@ -1681,6 +1681,64 @@ what would settle that.
 - Stack, decided in week 4: `kbase` from AgenticEnv (pgvector, hybrid retrieval) or a light
   in-repo index. The corpus is small.
 
+**Design (fixed 2026-11-07, before any code was written or any question was run).**
+
+*Stack: a light in-repo index, not `kbase`.* The corpus is about 42,000 paragraphs (250
+statements: 1,323; 262 minutes: 34,971; 96 press conferences: 6,017), 2.7 million words, which
+fits in memory. `kbase` needs a running PostgreSQL and a second repository, so a reader could
+not rerun the pipeline from this repository alone; FRED was fetched in-repo for the same reason
+(§12). Its default embedding is a hashing bag of words, not a semantic model. Nothing in it is
+needed at this size.
+
+*Retrieval.*
+
+- **Unit**: the paragraph, as the parsed text gives it (blocks separated by a blank line), with
+  id `<doc_id>#p<n>`, its document type and its release date. A citation names this id.
+- **Two retrievers and their fusion.** Lexical: BM25 (k1 = 1.2, b = 0.75), written in the
+  repository. Dense: `BAAI/bge-small-en-v1.5` (MIT, revision `5c38ec7c`, 33 M parameters,
+  the query prefix of its model card, inputs truncated at 512 tokens), cosine similarity. The
+  two rankings are fused by reciprocal rank fusion (k = 60), and the top 8 paragraphs go to the
+  model. BM25 alone and the encoder alone are reported as baselines.
+- **Point-in-time filter.** A query can carry an `as_of` date. Only paragraphs released on or
+  before it can be retrieved, using the release date of their document, as everywhere else in
+  the study. A question asked "as of" a date gets no help from documents written after it. This
+  is tested.
+
+*Answering.* The local model gets the question and the 8 paragraphs, each with its id, and
+answers in a JSON schema: an answer, a list of citations (paragraph id and a verbatim quote),
+and a refusal flag for when the paragraphs do not support an answer. Model: Phi-4, the reader
+of the study, under a versioned prompt, at temperature 0. Code checks two things about each
+citation: that its paragraph was among those retrieved, and that its quote occurs verbatim in
+that paragraph.
+
+*Evaluation set.* About 50 questions, written with their reference answer and reference
+paragraph ids by Claude (claude-opus-5-5) from the corpus, as for the reference reader (§6.6).
+They are committed before the system answers any of them. Their types:
+
+- factual lookups in one document ("what did the statement of … say about …");
+- changes in wording across documents ("how did the inflation wording change between 2021 and
+  2023?");
+- press conference and minutes passages;
+- about 10 questions the corpus cannot answer, or that ask "as of" a date before the event.
+  The correct behaviour on these is a refusal.
+
+The set is split before any run: 10 development questions, the only ones used to adjust the
+system (prompt, k), and 40 test questions, run once. The maintainer checks a sample of the
+reference answers.
+
+*Metrics.*
+
+- **Retrieval**: recall@k for k = 1, 5, 8 (the share of answerable questions with a reference
+  paragraph in the top k) and the mean reciprocal rank, for BM25, the encoder and the fusion.
+- **Citations**: the verbatim rate (code), and **faithfulness**: does the cited passage support
+  the claim? This is judged by Claude, which sees no market data (§12), with the maintainer
+  checking a sample.
+- **Refusals**: correct refusals on the unanswerable questions, false refusals on the
+  answerable ones.
+
+This is an evaluation, not a hypothesis test: nothing in the study's conclusions depends on it,
+and it has no pass bar. It is reported in full, failures included.
+
 ---
 
 ## 7. Specification freeze
@@ -1849,3 +1907,4 @@ and the report.
 | 2026-11-07 | A run: inconclusive by the pre-set rule (press conference days before the cutoff +0.56 bp per SD, n = 77; from 2019 +0.84, p = 0.040; after the cutoff −0.40, n = 19) | the regime halves the effect but does not remove it; the 19 statements after the cutoff are too noisy to separate the two explanations, as the MDE said; H3 moves to B (§6.7) |
 | 2026-11-07 | B edits written and frozen before any edited reading: 38 statements, three rewrites each; passage rules for non-verbatim evidence; identical passages get identical rewrites; 9 of 20 statements before the cutoff and 1 of 18 after flagged for other rate guidance left in the text, B also reported without them | guidance left in the text pulls the reading back like memory would, and mostly before the cutoff, so without the flag B would lean towards finding memory (§6.7) |
 | 2026-11-07 | B run: the score follows the text by the pre-set rule; hawkish > dovish FG on 100% of statements before and after the cutoff; the gap is +0.33 larger before (95% −0.07 to +0.68), +0.40 without flagged statements | memory would make known statements resist the edit; they move at least as much; H3 restated: no sign that period knowledge drives the score, borderline shading not excluded (§6.7) |
+| 2026-11-07 | Retrieval agent: in-repo index (paragraph units, BM25 + bge-small fused by RRF, point-in-time `as_of` filter), Phi-4 answers with verified verbatim citations; 50 questions written and committed before any run, 10 dev / 40 test | `kbase` needs Postgres and a second repository, so the pipeline would not rerun from this one; the corpus fits in memory; the dev/test split keeps the questions from being used to tune the system (§6.8) |
