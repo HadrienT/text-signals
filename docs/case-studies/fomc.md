@@ -1434,6 +1434,109 @@ FOMC statement, so ChronoGPT gives no evidence for or against look-ahead. **H3 s
 stated above. What would close it is still a family of dated models able to do the task, or a
 longer run of statements after Phi-4's cutoff.
 
+**Where H3 stands, and two further tests (specified 2026-11-07, before either was run).**
+
+*The reasoning so far.* Four facts, and what each one does and does not show:
+
+1. Anonymisation barely moves the scores (r = 0.96). This shows that the reading does not lean
+   on *explicit* dates and names. It does not show that the model reads rather than remembers:
+   the dating probe shows that it places an anonymised statement within about a year from the
+   wording and the rate levels alone, which anonymisation leaves in place.
+2. The model therefore knows the period of almost every statement it scored. That is the
+   *condition* for look-ahead. Look-ahead in the score also needs a second step: that the model
+   knows how the market took the statement and lets this shade its reading of the tone. Nothing
+   so far tests that second step.
+3. After the cutoff the effect is not detectable: β = −0.44 bp per SD, se 1.38, n = 19. The
+   95% interval (about −3.1 to +2.3) holds zero and also the +1.13 measured before the cutoff.
+   The data do not say that the effect disappears. They say nothing either way.
+4. A second explanation predicts the same weak effect after the cutoff without any look-ahead.
+   The effect is already much weaker on press conference days (secondary test 11: +0.48 bp per
+   SD, n = 96, against +1.70 on other days), and the out-of-sample gain is made in 2000–2008
+   and lost in most later years (§6.4). That decline starts around 2011, inside the training
+   window, so look-ahead cannot cause it. Every statement after the cutoff falls on a press
+   conference day.
+
+So two questions remain open, and each gets one test. **A** asks whether the weak effect after
+the cutoff is explained by the press conference regime. **B** asks the second step of point 2
+directly: when the text says one thing and the model may remember another, does the score
+follow the text?
+
+*A. Regime-matched cutoff comparison.* Compare before and after the cutoff inside the same
+regime, so that the press conference cannot account for a difference.
+
+- A1 (main): statements of the primary sample released on a press conference day (the
+  definition of secondary test 11). Before the cutoff: n = 77, 27 April 2011 to 12 June 2024.
+  After: n = 19.
+- A2: the calendar window in which every meeting has a press conference, 1 January 2019 to
+  30 June 2024 (n = 47), against the same 19.
+- In each: the primary regression on each side, β per SD of `llm_tone` (the SD of the pooled
+  sample, as in the cutoff split) with its HAC 95% interval, and the interaction
+  `llm_tone × after_cutoff` in the pooled regression.
+- Power, computed before the run from the outcome and MP1 only (residual SD after MP1, the
+  formula of §6.3, 5% size, 80% power): MDE 1.47 bp per SD for A1 before the cutoff, 2.03 for
+  A2 before, 2.51 after. **Neither side can detect an effect of the primary size (1.03) with
+  confidence**, and the interaction has even less power. A is read from the point estimates
+  before the cutoff, with that caveat.
+- Reading rule, fixed now, on the A1 estimate before the cutoff:
+  - below 0.5 bp per SD (half the primary β): the regime accounts for the weak effect after the
+    cutoff, and that weakness is no evidence of look-ahead;
+  - 0.9 or more with HAC p < 0.05: the regime does not explain it, and look-ahead stays the
+    simplest explanation of the weakness after the cutoff;
+  - in between: inconclusive. A2 is reported with A1 and read the same way, as a check.
+- **What is already known, stated before the run.** Secondary test 11 (+0.48 on all 96 press
+  conference days, the 19 after the cutoff included) and the yearly out-of-sample path were
+  seen on 2026-11-06. So A is not blind: our expectation, written now, is an A1 estimate before
+  the cutoff around +0.5 to +0.7, which sits on the lower threshold. The thresholds are not
+  moved to avoid this; if the estimate falls in the inconclusive band, it is reported as such.
+
+*B. Counterfactual edits: does the score follow the text?* Take real statements, rewrite only
+the forward guidance sentence in a hawkish, a dovish and a neutral version, and have Phi-4 read
+each with the chosen procedure. If the model reads, its forward guidance value follows the
+edit. If it reproduces what it remembers of the statement, the value stays close to the
+original reading whatever the edit says.
+
+- *Sample* (seed 20261108, no market data used): 10 statements drawn from 2000–2018 and 10 from
+  1 January 2019 to 30 June 2024, among those where Phi-4's original reading has a forward
+  guidance value; and all 18 statements after the cutoff that have one. The statements before
+  the cutoff are the ones the model may recognise; those after it are the control the model
+  cannot recognise.
+- *Edits* (`data/labels/fomc_counterfactual_v1.json`). The guidance sentence is the sentence of
+  the statement that contains Phi-4's forward guidance evidence. It is rewritten three times:
+  - **hawkish**: a clear signal of further tightening (the schema's +2);
+  - **dovish**: a commitment to keep rates low or to ease (−2);
+  - **neutral**: the same meaning in other words.
+
+  Only that sentence changes. The decision, the rate levels and every other sentence stay as
+  they are, and a sentence that also states the decision keeps its decision clause. No dates or
+  names are added, and the length stays close to the original. The edits are written by Claude
+  (claude-opus-5-5) on 2026-11-07, before Phi-4 reads any edited text. The file stores the
+  original sentence verbatim; code checks that it occurs exactly once in the statement.
+- *Reading*: Phi-4 (Q8_0, the profile used for every score), prompt v2, values from the first
+  answer, temperature 0, cached apart from the other readings. The original reading is the one
+  already cached.
+- *Measures*, for the forward guidance value FG:
+  - B1, follows the text: the share of statements with FG(hawkish) > FG(dovish);
+  - B2, reaches the target: the shares with FG(hawkish) ≥ +1 and with FG(dovish) ≤ −1;
+  - B3, noise: the share with FG(neutral) ≠ FG(original), and the mean absolute change of the
+    four other stance fields between each edit and the original (spill-over);
+  - B4, memory: the mean of FG(hawkish) − FG(dovish) before the cutoff against after, with a
+    bootstrap 95% interval of the difference (10,000 resamples of statements, seed 20261108).
+    It is also split before the cutoff by whether the dating probe placed the statement within
+    one year;
+  - `llm_tone`(hawkish) − `llm_tone`(dovish), reported with each.
+- *Reading rule*, fixed now:
+  - **the score follows the text**: B1 ≥ 80% before the cutoff, and the B4 difference does not
+    exclude zero, or favours the statements before the cutoff;
+  - **memory overrides the text**: B1 < 50% before the cutoff, or a mean FG(hawkish) −
+    FG(dovish) before the cutoff below half the mean after, with the interval of the difference
+    excluding zero;
+  - otherwise: partial, reported as such.
+- *What B cannot show.* It tests whether the score can be pulled away from what the model may
+  remember, when the text clearly says something else. On the real statements, text and memory
+  agree, and B cannot rule out that memory shaded the borderline cases. A passing B makes
+  the "the model only remembers" reading untenable. It does not prove that memory contributed
+  nothing.
+
 ### 6.8 Retrieval agent (week 4)
 
 - Question answering over the corpus ("how did the inflation wording change between 2021 and
@@ -1608,3 +1711,4 @@ and the report.
 | 2026-11-06 | Look-ahead: anonymisation barely moves the scores (r = 0.96, β 0.85 vs 0.97 bp per SD); Phi-4 dates pre-cutoff statements within about a year but not post-cutoff ones; no detectable effect after the cutoff (19 statements) | H3 left open and stated as such: the primary result holds for a model that knows the period (§6.7) |
 | 2026-11-06 | Look-ahead-free reader: ChronoGPT vintage Y − 1 for each statement of year Y, next-word likelihood score with anchor calibration, validity bar r ≥ 0.30 with the reference, all fixed before scoring | the instruction-following use failed on invented sentences; the GPU is unavailable after midnight, so the run is on CPU (§6.7) |
 | 2026-11-07 | ChronoGPT reader not valid: r = 0.04 with the reference against the 0.30 bar; its β (+0.28 bp per SD, p = 0.45) reported, not interpreted; post hoc, the score tracks the era and statement length, not the text | the criterion fixed before scoring decides; the raw score's 0.34 is between vintages and seen after the verdict, so not adopted; H3 stays open (§6.7) |
+| 2026-11-07 | Two further H3 tests specified before running: A, the cutoff comparison inside the press conference regime (MDE 1.47 bp per SD before, 2.51 after; reading thresholds 0.5 and 0.9); B, counterfactual hawkish, dovish and neutral rewrites of the guidance sentence of 38 statements, read by Phi-4 | the weak effect after the cutoff has a rival explanation (press conferences) that predicts it without look-ahead; the step from knowing the period to shading the score had not been tested; what was already seen of A is stated with it (§6.7) |
