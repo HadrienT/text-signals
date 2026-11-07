@@ -100,3 +100,30 @@ def test_chrono_check_reports_validity_and_the_regression(monkeypatch) -> None: 
     r = lookahead.chrono_check(table, chrono)
     assert r["valid"] == 1.0 and r["r_with_reference"] > 0.8
     assert r["chrono_p"] < 0.01 and r["n_regression"] == n
+
+
+def test_chrono_diagnostics_separates_era_from_reading() -> None:
+    import numpy as np
+    import pandas as pd
+
+    from text_signals.sources.fomc.lookahead import chrono_diagnostics
+
+    rng = np.random.default_rng(11)
+    vintages = np.repeat(np.arange(10), 10)
+    era = vintages / 10.0
+    reference_tone = era + rng.normal(0, 0.3, 100)
+    # Raw log-odds track the era only; the anchor offset removes the era level.
+    raw = era + rng.normal(0, 0.05, 100)
+    records = pd.DataFrame(
+        {
+            "doc_id": [f"d{i:03d}" for i in range(100)],
+            "vintage": vintages,
+            "sentence_log_odds": [[x, x] for x in raw],
+            "chrono_tone": raw - era,
+        }
+    )
+    reference = pd.DataFrame({"doc_id": records["doc_id"], "reference_tone": reference_tone})
+    r = chrono_diagnostics(records, reference)
+    assert r["n_reference"] == 100
+    assert r["r_raw_no_anchor"] > 0.6
+    assert abs(r["r_within_vintage"]) < 0.3 and abs(r["r_calibrated"]) < 0.3

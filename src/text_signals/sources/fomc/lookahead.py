@@ -301,9 +301,36 @@ def chrono_check(table: pd.DataFrame, chrono: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def chrono_diagnostics(records: pd.DataFrame, reference: pd.DataFrame) -> dict[str, float]:
+    """Why the ChronoGPT reader fails (post hoc, not part of the fixed specification, §6.7).
+
+    ``records`` holds one row per statement from the score cache (``vintage``,
+    ``sentence_log_odds``, ``chrono_tone``). Separates what the score shares with the reference
+    across vintages (era) from what it shares within a vintage (reading), and checks length.
+    """
+    r = records.copy()
+    r["raw"] = r["sentence_log_odds"].apply(lambda xs: sum(xs) / len(xs))
+    r["n_sentences"] = r["sentence_log_odds"].apply(len)
+    m = r.merge(reference, on="doc_id").dropna(subset=["reference_tone"])
+    within_chrono = m["chrono_tone"] - m.groupby("vintage")["chrono_tone"].transform("mean")
+    within_ref = m["reference_tone"] - m.groupby("vintage")["reference_tone"].transform("mean")
+    return {
+        "n_reference": float(len(m)),
+        "r_calibrated": float(m["chrono_tone"].corr(m["reference_tone"])),
+        "spearman_calibrated": float(m["chrono_tone"].corr(m["reference_tone"], method="spearman")),
+        "r_raw_no_anchor": float(m["raw"].corr(m["reference_tone"])),
+        "r_within_vintage": float(within_chrono.corr(within_ref)),
+        "r_with_n_sentences_all": float(r["chrono_tone"].corr(r["n_sentences"])),
+        "r_with_vintage_all": float(r["chrono_tone"].corr(r["vintage"])),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=["anonymised-run", "probe-run", "show", "report", "chrono"])
+    parser.add_argument(
+        "cmd",
+        choices=["anonymised-run", "probe-run", "show", "report", "chrono", "chrono-diagnostics"],
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
     if args.cmd == "anonymised-run":
@@ -317,6 +344,12 @@ def main() -> None:
 
         table = study.study_table(pd.read_csv(study.EVENTS), pd.read_csv(study.LLM_SCORES))
         for k, v in chrono_check(table, pd.read_csv(CHRONO_SCORES)).items():
+            print(f"{k}: {v:.4f}")
+    elif args.cmd == "chrono-diagnostics":
+        from text_signals.sources.fomc.chrono_scores import CACHE
+
+        cached = pd.read_json(CACHE, lines=True).drop_duplicates("doc_id", keep="last")
+        for k, v in chrono_diagnostics(cached, reference_tone()).items():
             print(f"{k}: {v:.4f}")
     elif args.cmd == "report":
         from text_signals.sources.fomc import study
